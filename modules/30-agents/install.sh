@@ -22,7 +22,7 @@ KEYCHAIN_CODEX="Codex Auth"
 
 # 匿名拉取：不弹账号输入、不用对方存的 GitHub 凭证、不触发全局 git 钩子（loadrc 的全局钩子会自动 pull / push）
 ms_git() {
-    GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.hooksPath=/dev/null "$@"
+    GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.hooksPath=/dev/null "$@" </dev/null
 }
 
 # claim_new_dir <目录>...：目录原来没有 → 建出来并记为我们的（卸载时整个删掉）；原来就有 → 不动、不记账
@@ -149,7 +149,8 @@ fi
 if ! ms_recorded cask codex && has_codex; then
     ms_log "Codex 原来就有，不动"
 else
-    ms_cask codex || ms_die "Codex 安装失败"
+    # brew 会读标准输入；堵上，免得它吃掉调用方经标准输入送进来的后续命令
+    ms_cask codex </dev/null || ms_die "Codex 安装失败"
 fi
 
 # 两个工具接 Chrome 扩展时，会各往 Chrome 的目录里写一份「本机消息」清单；Codex 还会在 ~/.cache 下放运行时。
