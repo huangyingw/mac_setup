@@ -9,6 +9,7 @@
 #     brew     Homebrew 本身是我们装的        clt   Xcode 命令行工具是我们装的
 #     brewhome Homebrew 的用户配置目录（默认 ~/.homebrew）原来没有（卸载时在最后一条 brew 命令之后删）
 #     brewcache 我们下载到 Homebrew 缓存里的安装包（Homebrew 原来就有时才记；卸载软件之后删）
+#     newdir   我们建出来的「共用上级目录」（~/.local、~/.config 之类；卸载时只在空了才删）
 #   原来就有的软件和配置不记账，卸载时不会碰。
 
 MS_HOME="${MS_HOME:-$HOME/.mac_setup}"
@@ -57,6 +58,34 @@ ms_backup() {
 ms_claim() {
     ms_backup "$1"
     ms_record path "$1"
+}
+
+# ms_claim_dir <目录>...：需要一个「大家共用的上级目录」（~/.local、~/.local/share、~/.config、
+# ~/.cache、~/Library/LaunchAgents 之类）时调用。原来没有 → 建出来并记一笔 newdir（中间缺的
+# 各级也各记一笔）；原来就有 → 不动、不记账。
+# 不要用 ms_claim / 记成 path：path 在恢复原状时是整个删掉的，会连带删掉安装之后别的程序
+# （或别的状态目录）放进去的东西。newdir 由 uninstall.sh 统一处理：只在目录已经空了才删。
+# 放进这些目录里的、属于我们的东西，照常各自 ms_claim / ms_own_if_absent。
+ms_claim_dir() {
+    local d p
+    for d in "$@"; do
+        p="$d"
+        while [ ! -e "$p" ] && [ ! -L "$p" ] && [ "$p" != "$HOME" ] && [ "$p" != / ]; do
+            ms_record newdir "$p"
+            p="$(dirname "$p")"
+        done
+        [ -d "$d" ] || mkdir -p "$d"
+    done
+}
+
+# ms_own_if_absent <路径>...：路径原来没有 → 记为我们的（不创建）；原来就有 → 不动、不记账。
+# 用在「我们装的工具运行时会自己往里写」的位置上（缓存、状态文件等），这样恢复原状时能一并删掉，
+# 共用的上级目录才空得下来。
+ms_own_if_absent() {
+    local p
+    for p in "$@"; do
+        [ -e "$p" ] || [ -L "$p" ] || ms_record path "$p"
+    done
 }
 
 # ms_todo <一句话>：登记一条必须人工做的事（登录、授权等），install.sh 结束时统一列出
@@ -195,4 +224,35 @@ ms_remove_cached() {
         ""|[!/]*|*..*) ms_warn "拒绝删除（不是正常的绝对路径）: $p"; return 0 ;;
     esac
     if [ -L "$p" ] || [ -f "$p" ]; then rm -f -- "$p"; fi
+}
+
+# ms_is_shared_dir <绝对路径>：是不是众所周知的共用上级目录。
+# 保险用：这些目录即使被记成了 path，恢复原状时也只按「空了才删」处理，绝不整个删。
+ms_is_shared_dir() {
+    case "$1" in
+        "$HOME/.local"|"$HOME/.local/bin"|"$HOME/.local/share"|"$HOME/.local/state"|"$HOME/.local/lib") return 0 ;;
+        "$HOME/.config"|"$HOME/.cache"|"$HOME/bin") return 0 ;;
+        "$HOME/Library"|"$HOME/Library/LaunchAgents"|"$HOME/Library/Application Support") return 0 ;;
+        "$HOME/Library/Preferences"|"$HOME/Library/Caches"|"$HOME/Library/Logs") return 0 ;;
+    esac
+    return 1
+}
+
+# ms_remove_dir_if_empty <绝对路径>：只在目录已经空了的时候才删（Finder 的 .DS_Store 不算东西）；
+# 里面还有东西 → 保留，并说出还剩什么，由人判断。
+ms_remove_dir_if_empty() {
+    local d="$1" left
+    case "$d" in
+        *..*) ms_warn "拒绝删除（路径含 ..）: $d"; return 0 ;;
+        "$HOME"/?*) ;;
+        *) ms_warn "拒绝删除（不在家目录下）: $d"; return 0 ;;
+    esac
+    if [ -L "$d" ] || [ ! -d "$d" ]; then return 0; fi
+    rm -f "$d/.DS_Store"
+    if rmdir "$d" 2>/dev/null; then
+        ms_log "删除 ${d}（已空）"
+        return 0
+    fi
+    left="$(ls -A "$d" 2>/dev/null | head -5 | tr '\n' ' ')"
+    ms_warn "保留 ${d}：是我们建的，但里面还有没记过账的东西（${left% }）"
 }
