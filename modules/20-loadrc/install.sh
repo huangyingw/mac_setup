@@ -31,12 +31,15 @@ ms_git() {
     GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.hooksPath=/dev/null "$@" </dev/null
 }
 
-# claim_new_dir <目录>...：目录原来没有 → 建出来并记为我们的；原来就有 → 不动、不记账
+# claim_new_dir <目录>...：目录原来没有 → 建出来并记一笔 newdir；原来就有 → 不动、不记账。
+# 用在大家共用的上级目录上（~/.config、~/.local 之类）。不记成 path：path 在恢复原状时是整个删掉的，
+# 会连带删掉别人后来放进去的东西（机主这段时间装的软件、演练机上别的分支的测试环境）。
+# newdir 由本模块的 uninstall.sh 处理：先删掉里面清单记过的东西，目录空了才删。
 claim_new_dir() {
     local d
     for d in "$@"; do
         [ -e "$d" ] && continue
-        ms_record path "$d"
+        ms_record newdir "$d"
         mkdir -p "$d"
     done
 }
@@ -231,10 +234,14 @@ iterm_setup() {
         fi
     fi
     ms_claim "$HOME/.local/iterm2-venv"
+    ms_claim "$HOME/.local/iterm2-venv.lock"
     claim_new_dir "$HOME/Library/LaunchAgents"
     ms_claim "$ITERM_PLIST"
-    claim_new_dir "$HOME/Library/Application Support/iTerm2" \
-                  "$HOME/Library/Application Support/iTerm2/Scripts" \
+    # iTerm2 自己的数据目录不是共用目录：原来没有（这台机器没开过 iTerm2）→ 整个记为我们的，
+    # 之后 iTerm2 往里写的东西卸载时一起删；原来就有 → 只记我们新建的那两层
+    own_if_absent "$HOME/Library/Application Support/iTerm2"
+    mkdir -p "$HOME/Library/Application Support/iTerm2"
+    claim_new_dir "$HOME/Library/Application Support/iTerm2/Scripts" \
                   "$HOME/Library/Application Support/iTerm2/Scripts/AutoLaunch"
     ms_claim "$HOME/Library/Application Support/iTerm2/Scripts/AutoLaunch/restart-bell-daemon.py"
     if bash "$LOADRC/iterm2rc/install.sh" </dev/null >"$MS_HOME/iterm2-setup.log" 2>&1; then
