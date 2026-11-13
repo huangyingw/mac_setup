@@ -37,12 +37,15 @@ $HOME/Library/WebKit/app.spokenly
 $HOME/Library/Saved Application State/app.spokenly.savedState
 "
 
-# claim_new_dir <目录>...：原来没有 → 建出来并记为我们的；原来就有 → 不动、不记账
+# claim_new_dir <目录>...：原来没有 → 建出来并记一笔 newdir；原来就有 → 不动、不记账。
+# 这些是大家共用的上级目录（~/.local 之类）。不记成 path：path 在恢复原状时是整个删掉的，
+# 会连带删掉别人后来放进去的东西（演练机上真的删到过别的分支的测试环境）。
+# newdir 由本模块的 uninstall.sh 处理：只在目录已经空了的时候才删。
 claim_new_dir() {
     local d
     for d in "$@"; do
         [ -e "$d" ] && continue
-        ms_record path "$d"
+        ms_record newdir "$d"
         mkdir -p "$d"
     done
 }

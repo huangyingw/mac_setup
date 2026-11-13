@@ -13,7 +13,8 @@ PREFS="$HOME/Library/Preferences/app.spokenly.plist"
 # 清单里没有本模块的记录 → 什么都不做。
 # （恢复原状会依次跑每个模块的清理；用别的状态目录、或者没装过本模块时，不能去动对方正开着的 Spokenly）
 if ! ms_recorded path "$PREFS" && ! ms_recorded path "$AGENT" \
-        && ! ms_recorded cask spokenly && ! ms_recorded keychain "$KEYCHAIN_SVC"; then
+        && ! ms_recorded cask spokenly && ! ms_recorded keychain "$KEYCHAIN_SVC" \
+        && ! grep -q "^newdir$(printf '\t')" "$MS_MANIFEST" 2>/dev/null; then
     exit 0
 fi
 
@@ -26,7 +27,7 @@ if ms_recorded path "$AGENT"; then
 fi
 
 # 2. 退出 Spokenly：它开着的话会把内存里的设置写回去，盖掉放回去的原有设置
-if pgrep -x Spokenly >/dev/null 2>&1; then
+if ms_recorded path "$PREFS" && pgrep -x Spokenly >/dev/null 2>&1; then
     pkill -x Spokenly 2>/dev/null
     i=0
     while pgrep -x Spokenly >/dev/null 2>&1 && [ "$i" -lt 15 ]; do sleep 1; i=$((i + 1)); done
@@ -66,6 +67,22 @@ if [ -n "$cache" ] && [ -d "$cache" ]; then
     if ms_recorded formula uv; then drop_cached "$cache"/uv--* "$cache"/uv_bottle_manifest--*; fi
 fi
 
-# 6. 让系统的设置缓存重新读盘：接下来设置文件会被直接删掉 / 放回
-killall -u "$(id -un)" cfprefsd 2>/dev/null
+# 6. 我们新建的共用上级目录（~/.local、~/.local/share、~/Library/LaunchAgents）：
+#    先删掉里面属于本模块的东西，然后只在目录已经空了的时候才删目录本身——
+#    别人后来放进去的东西不碰。
+DEST="$HOME/.local/share/qwen3-asr-server"
+if ms_recorded path "$AGENT"; then ms_remove_path "$AGENT"; fi
+if ms_recorded path "$DEST"; then ms_remove_path "$DEST"; fi
+awk -F'\t' '$1=="newdir"{print $2}' "$MS_MANIFEST" | tail -r | while IFS= read -r d; do
+    case "$d" in
+        "$HOME"/?*)
+            [ -d "$d" ] || continue
+            rm -f "$d/.DS_Store"
+            rmdir "$d" 2>/dev/null || ms_log "保留 ${d}（里面还有别的东西）"
+            ;;
+    esac
+done
+
+# 7. 让系统的设置缓存重新读盘：接下来设置文件会被直接删掉 / 放回
+if ms_recorded path "$PREFS"; then killall -u "$(id -un)" cfprefsd 2>/dev/null; fi
 exit 0
