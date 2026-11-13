@@ -31,7 +31,11 @@
 
 ## 4. 备份与恢复原状
 
-记账的路径：`~/.claude`、`~/.codex`、`~/.claude.json`、`~/.local/bin/claude`、`~/.local/share/claude`、`~/.local/state/claude`、`~/.cache/claude`、`~/Library/Caches/claude-cli-nodejs`、`~/.cache/codex-runtimes`、两份 Chrome「本机消息」清单；`~/.local`、`~/.cache` 及其子目录只有原来不存在时才记为我们的。对方原有的同名东西先挪进备份，卸载时放回。
+记账的路径：`~/.claude`、`~/.codex`、`~/.claude.json`、`~/.local/bin/claude`、`~/.local/share/claude`、`~/.local/state/claude`、`~/.cache/claude`、`~/Library/Caches/claude-cli-nodejs`、`~/.cache/codex-runtimes`、各浏览器的「本机消息」清单。对方原有的同名东西先挪进备份，卸载时放回。
+
+共用的上级目录（`~/.local` 及其 `bin` / `share` / `state`、`~/.cache`）按框架约定用 `ms_claim_dir` 记：原来没有才建、才记账，恢复原状时空了才删，别人后放进去的东西不碰。
+
+「本机消息」清单不只写给 Chrome：参考机上两个工具给 Chrome、Chrome for Testing、Chromium、Brave、Arc、Edge、Vivaldi、Opera 都写了，没装的浏览器也被建出了只放这份清单的数据目录。所以这些浏览器的 `NativeMessagingHosts` 目录都按共用目录记（安装时先建出来，卸载时空了才删），里面的两份清单记为我们的。
 
 清单管不到、放在模块自己的 `uninstall.sh` 里的：
 
