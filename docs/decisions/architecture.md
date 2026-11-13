@@ -1,0 +1,47 @@
+# 总体设计
+
+记录日期：2026-11-13。规则与约束见仓库根 `AGENTS.md`，这里记「为什么这样做」。
+
+## 1. 目标机上：一条命令
+
+```
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/huangyingw/mac_setup/integration/install.sh)"
+```
+
+- 真实场景里没有参考机配合，所以入口必须自带一切。
+- 干净的 macOS 没有 git（`/usr/bin/git` 只是触发安装 Xcode 命令行工具的占位），所以入口用系统自带的 `curl` + `tar` 把本仓库的压缩包取到 `~/.mac_setup/src`，再从那里执行。git 由 Homebrew 装好以后才可用。
+- 入口按顺序跑 `modules/*/install.sh`。一个模块失败不拦后面的模块（面试现场宁可少一样，不要全停），最后汇总失败项和需要人工做的事。
+
+## 2. 记账、备份、恢复原状
+
+对方的电脑要能还原，所以安装全程记账（`~/.mac_setup/manifest.tsv`）：
+
+- 原来就有的东西，动之前挪进 `~/.mac_setup/backup/<原绝对路径>`；
+- 我们创建的路径、装的 formula / cask、是否由我们装了 Homebrew 和 Xcode 命令行工具，各记一条；
+- 对方原来就有的软件不记账，卸载时不碰。
+
+`uninstall.sh` 的顺序：各模块自己的清理 → 删我们创建的路径 → 把备份放回 → 卸软件（Homebrew 是我们装的就整个卸掉）→ 删状态目录。
+
+备份只在「第一次遇到原件」时做。重跑安装时路径上已是我们的东西，不能再备份，否则会盖掉真正的原件。
+
+## 3. 公开 / 改回私有
+
+- `repos.txt` 是唯一清单，只登记平时是 private 的仓库。
+- `local/publish.sh`：先对每个仓库做密钥检查（gitleaks 查内容 + 一份敏感文件名单查名字），**全部通过才改**。
+- `local/unpublish.sh`：不接受参数，总是把整份清单改回 private 并逐个核对，退出码反映是否全部确认。不依赖任何本地状态文件，状态丢了也不会漏。
+
+## 4. loadrc 走快照，不公开原仓库
+
+用户原先的设想是把 `loadrc` 直接改成 public。公开前的密钥检查（2026-11-13）没有通过，而且问题在提交历史里——公开仓库等于公开全部历史，改回私有也收不回。因此：
+
+- `huangyingw/loadrc` 写死在「永不公开」名单里；
+- 由 `local/snapshot.sh` 从 `loadrc` 导出一份**只含需要的文件、不带历史**的快照，推到单独的 `huangyingw/loadrc-snapshot`，公开的是它；
+- 导出范围用白名单（`snapshots/loadrc.include`）而不是黑名单：漏导的后果是目标机少个功能（看得见、能补），多导的后果是泄露（收不回）；
+- 快照每次导出都先过密钥检查，不过就不提交；
+- 顺带的好处：目标机不用下载 1.6GB 的历史。
+
+`claude-config`、`codex-config` 的完整历史通过了检查，按原设想直接公开。
+
+## 5. 分支按域切
+
+见 `BRANCHES.md`。框架（入口、记账、公开 / 私有脚本）在 `integration`；每个域（loadrc、agent 配置、Spokenly）自己负责「调查参考机现状 + 写自己的模块」一条龙，只通过 `modules/README.md` 的约定与框架对接。

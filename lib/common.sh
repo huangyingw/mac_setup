@@ -1,0 +1,122 @@
+# 目标机公共函数库：被 install.sh / uninstall.sh / 各模块 source。
+# 必须兼容 macOS 自带的 bash 3.2（不用关联数组、mapfile 等）。
+#
+# 记账约定（卸载靠它恢复原状，见 docs/decisions/architecture.md）：
+#   清单文件 $MS_MANIFEST 每行「类型<TAB>目标<TAB>附加」，类型有：
+#     path     我们创建的文件 / 目录 / 软链接（卸载时删除）
+#     backup   原来就有、被我们挪走的东西（目标 = 原路径，附加 = 备份位置；卸载时放回）
+#     formula  我们装的 Homebrew formula      cask  我们装的 Homebrew cask
+#     brew     Homebrew 本身是我们装的        clt   Xcode 命令行工具是我们装的
+#   原来就有的软件和配置不记账，卸载时不会碰。
+
+MS_HOME="${MS_HOME:-$HOME/.mac_setup}"
+MS_MANIFEST="$MS_HOME/manifest.tsv"
+MS_BACKUP_DIR="$MS_HOME/backup"
+MS_TODO="$MS_HOME/manual-steps.txt"
+MS_LOG="$MS_HOME/install.log"
+
+ms_log()  { printf '\033[0;32m[mac_setup]\033[0m %s\n' "$*"; }
+ms_warn() { printf '\033[1;33m[mac_setup] 注意:\033[0m %s\n' "$*" >&2; }
+ms_die()  { printf '\033[0;31m[mac_setup] 失败:\033[0m %s\n' "$*" >&2; exit 1; }
+
+ms_state_init() {
+    mkdir -p "$MS_BACKUP_DIR"
+    touch "$MS_MANIFEST" "$MS_TODO"
+}
+
+# ms_recorded <类型> <目标>：清单里有没有这一条
+ms_recorded() {
+    [ -f "$MS_MANIFEST" ] || return 1
+    awk -F'\t' -v t="$1" -v v="$2" '$1==t && $2==v {f=1} END{exit !f}' "$MS_MANIFEST"
+}
+
+# ms_record <类型> <目标> [附加]：记一条（已有则不重复记）
+ms_record() {
+    ms_recorded "$1" "$2" && return 0
+    printf '%s\t%s\t%s\n' "$1" "$2" "${3:-}" >> "$MS_MANIFEST"
+}
+
+# ms_backup <绝对路径>：动一个路径之前调用。原来就有 → 挪进备份目录并记账。
+# 重跑安全：已经是我们创建的、或原件已经备份过的，不再备份（否则会拿我们装的东西盖掉原件的备份）。
+ms_backup() {
+    local p="$1" dest
+    [ -e "$p" ] || [ -L "$p" ] || return 0
+    ms_recorded path "$p" && return 0
+    ms_recorded backup "$p" && return 0
+    dest="$MS_BACKUP_DIR$p"
+    mkdir -p "$(dirname "$dest")"
+    mv "$p" "$dest"
+    ms_record backup "$p" "$dest"
+    ms_log "已备份原有的 $p → $dest"
+}
+
+# ms_claim <绝对路径>：「我要在这里创建东西」——先备份原有的，再记为我们创建的。
+# 模块里凡是要新建 / 覆盖的路径，创建之前都调它。
+ms_claim() {
+    ms_backup "$1"
+    ms_record path "$1"
+}
+
+# ms_todo <一句话>：登记一条必须人工做的事（登录、授权等），install.sh 结束时统一列出
+ms_todo() {
+    grep -Fqx "$*" "$MS_TODO" 2>/dev/null || printf '%s\n' "$*" >> "$MS_TODO"
+}
+
+# ---------- Homebrew ----------
+
+ms_brew_load() {
+    local b
+    for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [ -x "$b" ]; then eval "$("$b" shellenv)"; return 0; fi
+    done
+    return 1
+}
+
+# 没有 Homebrew 就装（顺带装 Xcode 命令行工具），并记账是我们装的
+ms_brew_ensure() {
+    ms_brew_load && return 0
+    [ -d /Library/Developer/CommandLineTools ] || ms_record clt /Library/Developer/CommandLineTools
+    ms_log "安装 Homebrew（会顺带装 Xcode 命令行工具，需要几分钟）..."
+    # 没有终端（如经 ssh 演练）时不能交互；有终端时让它正常提示输入 sudo 密码
+    [ -t 0 ] || export NONINTERACTIVE=1
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+        || ms_die "Homebrew 安装失败"
+    ms_brew_load || ms_die "Homebrew 装完后找不到 brew"
+    ms_record brew "$(brew --prefix)"
+}
+
+# ms_formula <formula>：原来就装了 → 不动、不记账
+ms_formula() {
+    ms_brew_ensure
+    if brew list --formula "$1" >/dev/null 2>&1; then return 0; fi
+    ms_log "brew install $1"
+    brew install "$1" || return 1
+    ms_record formula "$1"
+}
+
+# ms_cask <cask> [应用名.app]：/Applications 里原来就有这个应用 → 不动、不记账
+ms_cask() {
+    ms_brew_ensure
+    if brew list --cask "$1" >/dev/null 2>&1; then return 0; fi
+    if [ -n "${2:-}" ] && [ -d "/Applications/$2" ]; then
+        ms_log "$2 原来就有，不动"
+        return 0
+    fi
+    ms_log "brew install --cask $1"
+    brew install --cask "$1" || return 1
+    ms_record cask "$1"
+}
+
+# ---------- 卸载用 ----------
+
+# ms_remove_path <绝对路径>：只删清单里记为我们创建的东西，且限定在已知安全的前缀下
+ms_remove_path() {
+    local p="$1"
+    case "$p" in
+        *..*) ms_warn "拒绝删除（路径含 ..）: $p"; return 0 ;;
+        "$HOME"/?*|/Applications/?*|/opt/homebrew/?*|/usr/local/?*|/Library/?*) ;;
+        *) ms_warn "拒绝删除（不在允许的位置）: $p"; return 0 ;;
+    esac
+    [ -e "$p" ] || [ -L "$p" ] || return 0
+    rm -rf -- "$p" 2>/dev/null || sudo rm -rf -- "$p"
+}
