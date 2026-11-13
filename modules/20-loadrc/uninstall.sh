@@ -1,7 +1,7 @@
 #!/bin/bash
 # loadrc 的清理里「清单管不到」的部分：定时任务、还在跑的进程、iTerm2 的设置和守护进程、gh 的登录。
 # 文件、目录和软链接（~/loadrc、~/.zshrc、~/.tmux.conf、~/.config/nvim 等）已记在清单里，
-# 由 uninstall.sh 统一删除 / 放回。共用的上级目录（newdir）例外，见最后一步。
+# 由 uninstall.sh 统一删除 / 放回；共用的上级目录（newdir）也由它处理（空了才删）。
 # 每一步都先看清单：不是本次安装记下的，一律不碰（演练机上几个分支各用各的清单）。
 set -uo pipefail
 . "$MS_SRC/lib/common.sh"
@@ -16,28 +16,9 @@ ms_extra() {
     awk -F'\t' -v t="$1" -v v="$2" '$1==t && $2==v {print $3}' "$MS_MANIFEST" | head -1
 }
 
-# 我们新建的共用上级目录（清单里的 newdir）：先删掉里面清单记过的东西（主卸载脚本接下来本来也要删），
-# 然后只在目录已经空了的时候才删目录本身——别人后来放进去的东西不碰。
-# 按清单的反序处理，里层的目录先于外层。放在本脚本的最后一步跑。
-remove_newdirs() {
-    local d p
-    awk -F'\t' '$1=="newdir"{print $2}' "$MS_MANIFEST" | tail -r | while IFS= read -r d; do
-        case "$d" in "$HOME"/?*) ;; *) continue ;; esac
-        [ -d "$d" ] || continue
-        awk -F'\t' '$1=="path"{print $2}' "$MS_MANIFEST" | tail -r | while IFS= read -r p; do
-            case "$p" in "$d"/?*) ms_remove_path "$p" ;; esac
-        done
-        rm -f "$d/.DS_Store"
-        rmdir "$d" 2>/dev/null || ms_log "保留 ${d}（里面还有不是我们放的东西）"
-    done
-}
-
 # 在参考机上用假的 HOME 试跑（安装时带了 MS_LOADRC_SANDBOX=1）：下面 1–5 步都不在 $HOME 里，
 # 安装时没碰，这里也不能碰——尤其钥匙串，删的会是参考机自己的登录。
-if [ -n "${MS_LOADRC_SANDBOX:-}" ]; then
-    remove_newdirs
-    exit 0
-fi
+[ -z "${MS_LOADRC_SANDBOX:-}" ] || exit 0
 
 # 1. 定时任务：只摘掉我们加的那一块，对方的条目（含这段时间新加的）原样留下。
 #    放在最前面：否则每分钟一次的巡查会在目录被删的同时还在跑。
@@ -138,5 +119,4 @@ if [ "$(ms_extra keychain "gh:github.com")" = ours ]; then
     [ "$n" -eq 0 ] || ms_log "已清掉钥匙串里 gh 的登录"
 fi
 
-remove_newdirs
 exit 0
