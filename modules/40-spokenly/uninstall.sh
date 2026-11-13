@@ -47,6 +47,25 @@ if ms_recorded keychain "$KEYCHAIN_SVC"; then
     [ "$n" -eq 0 ] || ms_log "已清掉钥匙串里 Spokenly 的记录"
 fi
 
-# 5. 让系统的设置缓存重新读盘：接下来设置文件会被直接删掉 / 放回
+# 5. Homebrew 下载缓存里我们装的那两样的安装包。
+#    Homebrew 是我们装的会整个卸掉、连缓存一起没；它原来就有时卸载软件不清缓存，这里补上。
+ms_brew_load 2>/dev/null || true
+cache="$(brew --cache 2>/dev/null || true)"
+# drop_cached <缓存里的链接>...：删掉链接和它指向的安装包
+drop_cached() {
+    local f t
+    for f in "$@"; do
+        [ -L "$f" ] || continue
+        t="$(readlink "$f")"
+        case "$t" in /*) ;; *) t="$(dirname "$f")/$t" ;; esac
+        rm -f "$t" "$f"
+    done
+}
+if [ -n "$cache" ] && [ -d "$cache" ]; then
+    if ms_recorded cask spokenly; then drop_cached "$cache"/Cask/spokenly--*; fi
+    if ms_recorded formula uv; then drop_cached "$cache"/uv--* "$cache"/uv_bottle_manifest--*; fi
+fi
+
+# 6. 让系统的设置缓存重新读盘：接下来设置文件会被直接删掉 / 放回
 killall -u "$(id -un)" cfprefsd 2>/dev/null
 exit 0
