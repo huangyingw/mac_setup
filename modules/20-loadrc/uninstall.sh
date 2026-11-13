@@ -65,6 +65,8 @@ if ms_recorded path "$HOME/loadrc"; then
             ms_warn "卸载是在 tmux 里跑的，没有停 tmux：跑完后请关掉这个终端窗口"
         else
             tmux kill-server 2>/dev/null
+            # tmux 放 socket 的目录（tmux 是我们装的 → 这个目录也是我们用出来的）
+            rm -rf "/private/tmp/tmux-$(id -u)"
         fi
     fi
     ancestors=" "
