@@ -28,7 +28,9 @@ main() {
 
     # 2. 删掉我们创建的文件 / 目录 / 软链接（反序：后创建的先删）
     local p dest
+    #    共用的上级目录（~/.local 之类）即使被记成了 path 也不在这里整个删，留到第 6 步
     awk -F'\t' '$1=="path"{print $2}' "$MS_MANIFEST" | tail -r | while IFS= read -r p; do
+        if ms_is_shared_dir "$p"; then continue; fi
         ms_log "删除 $p"
         ms_remove_path "$p"
     done
@@ -76,7 +78,19 @@ main() {
         sudo rm -rf /Library/Developer/CommandLineTools
     fi
 
-    # 6. 清掉我们自己的状态目录
+    # 6. 我们建出来的共用上级目录（newdir，以及被记成 path 的那几个众所周知的目录）：
+    #    只在已经空了的时候才删——安装之后别的程序（或别的状态目录）放进去的东西不碰。
+    #    排在最后：到这里属于我们的东西都已删掉。按路径从长到短，里层先于外层。
+    {
+        awk -F'\t' '$1=="newdir"{print $2}' "$MS_MANIFEST"
+        awk -F'\t' '$1=="path"{print $2}' "$MS_MANIFEST" | while IFS= read -r p; do
+            if ms_is_shared_dir "$p"; then printf '%s\n' "$p"; fi
+        done
+    } | awk '{print length($0) "\t" $0}' | sort -rn | cut -f2- | uniq | while IFS= read -r p; do
+        ms_remove_dir_if_empty "$p"
+    done
+
+    # 7. 清掉我们自己的状态目录
     if [ -f "$MS_HOME/.keep" ]; then
         ms_warn "有原件没能放回，保留 $MS_HOME 供手工处理"
     else
