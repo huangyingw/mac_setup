@@ -22,6 +22,7 @@ AGENT="$HOME/Library/LaunchAgents/$LABEL.plist"
 PORT=8765
 PREFS="$HOME/Library/Preferences/app.spokenly.plist"
 KEYCHAIN_SVC="app.spokenly.FSDService"
+APP="/Applications/Spokenly.app"
 
 # Spokenly 运行时自己会写的位置。启动它之前全部认领：对方原有的先挪进备份，
 # 我用过留下的（含听写录音和历史）恢复原状时直接删掉，不进废纸篓。
@@ -78,6 +79,15 @@ flush_prefs_cache
 ms_cask spokenly Spokenly.app || ms_die "Spokenly 安装失败"
 if [ -d "$HOME/Library/Containers/app.spokenly" ] && ! ms_recorded cask spokenly; then
     ms_todo "Spokenly：这台机器原来装的可能是 App Store 版（识别结果不会自动贴进输入框，也读不到我写的设置）；要用的话先告诉机主，再换成官网版"
+fi
+
+# 首次打开的确认框（「这是从互联网下载的应用，确定要打开吗」）：没人点的话进程会一直挂在启动前，
+# 设置读不进去。只对「我们刚装的、且系统判定为已公证」的这一份免掉这次确认；
+# 系统不认可的、或对方原来就有的，一律不动，留给人工点。
+if ms_recorded cask spokenly && xattr -p com.apple.quarantine "$APP" >/dev/null 2>&1; then
+    if spctl -a -t exec "$APP" >/dev/null 2>&1; then
+        xattr -dr com.apple.quarantine "$APP" 2>/dev/null
+    fi
 fi
 
 # 本机转写服务基于 MLX，只支持 Apple 芯片。（这条分支没有在 Intel 机器上实测过）
@@ -182,7 +192,9 @@ flush_prefs_cache
 open -a Spokenly 2>/dev/null \
     || ms_warn "没能自动打开 Spokenly（没有登录到桌面？），手动从「应用程序」里打开"
 
-ms_todo "Spokenly：第一次打开时若系统提示「来自互联网的应用」，点「打开」"
+if xattr -p com.apple.quarantine "$APP" >/dev/null 2>&1; then
+    ms_todo "Spokenly：第一次打开时系统会问「这是从互联网下载的应用，确定要打开吗」，点「打开」（不点的话它不会真正启动）"
+fi
 ms_todo "Spokenly：按听写快捷键说一句话，系统问麦克风权限时点「允许」"
 ms_todo "Spokenly：系统设置 → 隐私与安全性 → 辅助功能，打开 Spokenly 的开关（不开的话识别出的文字不会自动贴进输入框）"
 
