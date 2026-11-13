@@ -37,19 +37,6 @@ $HOME/Library/WebKit/app.spokenly
 $HOME/Library/Saved Application State/app.spokenly.savedState
 "
 
-# claim_new_dir <目录>...：原来没有 → 建出来并记一笔 newdir；原来就有 → 不动、不记账。
-# 这些是大家共用的上级目录（~/.local 之类）。不记成 path：path 在恢复原状时是整个删掉的，
-# 会连带删掉别人后来放进去的东西（演练机上真的删到过别的分支的测试环境）。
-# newdir 由本模块的 uninstall.sh 处理：只在目录已经空了的时候才删。
-claim_new_dir() {
-    local d
-    for d in "$@"; do
-        [ -e "$d" ] && continue
-        ms_record newdir "$d"
-        mkdir -p "$d"
-    done
-}
-
 # 退出 Spokenly。不用 osascript：它要先过「自动化」授权弹窗，经 ssh 或没人点的时候会卡住。
 quit_spokenly() {
     local i=0
@@ -125,7 +112,8 @@ MODEL="$(tr -d '[:space:]' < "$SNAP/service/model.mbp")"
 
 ms_formula uv || ms_die "uv 安装失败"
 
-claim_new_dir "$HOME/.local" "$HOME/.local/share" "$HOME/Library/LaunchAgents"
+# 共用的上级目录：原来没有才建、才记账，恢复原状时由框架只在空了的时候才删
+ms_claim_dir "$HOME/.local/share" "$HOME/Library/LaunchAgents"
 ms_claim "$DEST"
 mkdir -p "$DEST/logs"
 

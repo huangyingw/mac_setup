@@ -31,28 +31,6 @@ ms_git() {
     GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.hooksPath=/dev/null "$@" </dev/null
 }
 
-# claim_new_dir <目录>...：目录原来没有 → 建出来并记一笔 newdir；原来就有 → 不动、不记账。
-# 用在大家共用的上级目录上（~/.config、~/.local 之类）。不记成 path：path 在恢复原状时是整个删掉的，
-# 会连带删掉别人后来放进去的东西（机主这段时间装的软件、演练机上别的分支的测试环境）。
-# newdir 由本模块的 uninstall.sh 处理：先删掉里面清单记过的东西，目录空了才删。
-claim_new_dir() {
-    local d
-    for d in "$@"; do
-        [ -e "$d" ] && continue
-        ms_record newdir "$d"
-        mkdir -p "$d"
-    done
-}
-
-# own_if_absent <路径>...：路径原来没有 → 记为我们的（不创建）；原来就有 → 不动、不记账。
-# 用在「我的工具运行时会往里写、但对方可能本来就有」的位置上。
-own_if_absent() {
-    local p
-    for p in "$@"; do
-        [ -e "$p" ] || [ -L "$p" ] || ms_record path "$p"
-    done
-}
-
 # link <源> <落点>：落点上对方原有的东西先备份，再建软链接
 link() {
     local src="$1" dst="$2"
@@ -107,7 +85,7 @@ fi
 
 # ---------- 3. 配置落位 ----------
 
-claim_new_dir "$HOME/.config" "$HOME/.local" "$HOME/.local/share" "$HOME/.local/state" "$HOME/.cache"
+ms_claim_dir "$HOME/.config" "$HOME/.local" "$HOME/.local/share" "$HOME/.local/state" "$HOME/.cache"
 
 # zsh：~/.zshrc 用本模块自带的版本（与参考机的差异写在那个文件开头）
 link "$LOADRC/oh-my-zsh" "$HOME/.oh-my-zsh"
@@ -140,7 +118,7 @@ link "$LOADRC/.git-templates" "$HOME/.git-templates"
 # nvim 的插件清单里有 4 个地址写的是 Bitbucket 的 ssh 地址，这台机器没有密钥、拉不到。
 # 它们在 GitHub 上都有公开的同一份（两个是我自己的仓库，两个我没改过、用原作者的），
 # 这里只对这 4 个地址做改写，不动别的 git@ 地址（对方自己的仓库可能正用着 ssh 密钥）。
-claim_new_dir "$HOME/.config/git"
+ms_claim_dir "$HOME/.config/git"
 ms_claim "$HOME/.config/git/config"
 cat > "$HOME/.config/git/config" <<'EOF'
 # 由 mac_setup 的 20-loadrc 模块生成。
@@ -168,9 +146,9 @@ ms_claim "$HOME/.agent-lang.json"
 # 定时巡查和 hook 脚本会往 Claude Code / Codex 的配置目录里写日志和缓存。对方原来没有这两个目录 →
 # 先记为我们的：30-agents 还没装、或巡查抢在它前面把目录建了出来，卸载时都能删干净，
 # 也不会被 30-agents 当成「对方原有的」备份起来再放回去。
-own_if_absent "$HOME/.claude" "$HOME/.codex" "$HOME/.config/loadrc"
+ms_own_if_absent "$HOME/.claude" "$HOME/.codex" "$HOME/.config/loadrc"
 # 系统自带的 python3 跑我的脚本时留下的字节码缓存
-own_if_absent "$HOME/Library/Caches/com.apple.python"
+ms_own_if_absent "$HOME/Library/Caches/com.apple.python"
 
 # ---------- 4. nvim 插件 ----------
 # 配置里的插件平时是第一次打开 nvim 时在后台装、重启后才生效；这里先装好，打开就能用。
@@ -235,13 +213,13 @@ iterm_setup() {
     fi
     ms_claim "$HOME/.local/iterm2-venv"
     ms_claim "$HOME/.local/iterm2-venv.lock"
-    claim_new_dir "$HOME/Library/LaunchAgents"
+    ms_claim_dir "$HOME/Library/LaunchAgents"
     ms_claim "$ITERM_PLIST"
     # iTerm2 自己的数据目录不是共用目录：原来没有（这台机器没开过 iTerm2）→ 整个记为我们的，
     # 之后 iTerm2 往里写的东西卸载时一起删；原来就有 → 只记我们新建的那两层
-    own_if_absent "$HOME/Library/Application Support/iTerm2"
+    ms_own_if_absent "$HOME/Library/Application Support/iTerm2"
     mkdir -p "$HOME/Library/Application Support/iTerm2"
-    claim_new_dir "$HOME/Library/Application Support/iTerm2/Scripts" \
+    ms_claim_dir "$HOME/Library/Application Support/iTerm2/Scripts" \
                   "$HOME/Library/Application Support/iTerm2/Scripts/AutoLaunch"
     ms_claim "$HOME/Library/Application Support/iTerm2/Scripts/AutoLaunch/restart-bell-daemon.py"
     if bash "$LOADRC/iterm2rc/install.sh" </dev/null >"$MS_HOME/iterm2-setup.log" 2>&1; then

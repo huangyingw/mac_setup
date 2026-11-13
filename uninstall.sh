@@ -64,6 +64,14 @@ main() {
         awk -F'\t' '$1=="formula"{print $2}' "$MS_MANIFEST" | tail -r | while IFS= read -r p; do
             brew uninstall "$p" </dev/null || ms_warn "formula $p 卸载失败"
         done
+        # 我们下载进 Homebrew 缓存的安装包（含依赖的）：brew uninstall 不清，按清单删。
+        # 对方原来就缓存着的没记账，不动。
+        if [ -n "$(awk -F'\t' '$1=="brewcache"{print $2; exit}' "$MS_MANIFEST")" ]; then
+            ms_log "清掉 Homebrew 下载缓存里我们下载的安装包"
+            awk -F'\t' '$1=="brewcache"{print $2}' "$MS_MANIFEST" | while IFS= read -r p; do
+                ms_remove_cached "$p"
+            done
+        fi
     fi
     # Homebrew 的用户配置目录原来没有 → 删掉。必须排在最后一条 brew 命令之后：
     # 上面的 brew uninstall 自己会把它（信任记录的锁文件）再建出来，官方卸载脚本也不清它。
