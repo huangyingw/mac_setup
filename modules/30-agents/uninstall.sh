@@ -15,7 +15,15 @@ if ms_recorded cask codex; then
     pkill -x codex 2>/dev/null
 fi
 
-# 2. 钥匙串里的登录。安装时记过每个服务原来的状态：
+# 2. ~/.claude.json 的伴生文件（.backup、.tmp.*）名字不固定，清单里记不了。
+#    对方原有的在安装时已经挪进备份，现在还在的都是我们这段时间产生的。
+if ms_recorded path "$HOME/.claude.json"; then
+    for f in "$HOME"/.claude.json.*; do
+        [ -f "$f" ] && rm -f "$f"
+    done
+fi
+
+# 3. 钥匙串里的登录。安装时记过每个服务原来的状态：
 #    ours  原来没有        → 现在有的都是我登录留下的，删掉
 #    saved 原来有、已存一份 → 删掉我的，把原来的放回去
 #    lost  原来有、没存下来 → 删掉我的（安装时已登记要告诉机主重新登录）
