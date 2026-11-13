@@ -22,6 +22,11 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/huangyingw/mac_setup/int
 
 `uninstall.sh` 的顺序：各模块自己的清理 → 删我们创建的路径 → 把备份放回 → 卸软件（Homebrew 是我们装的就整个卸掉）→ 删状态目录。
 
+**Homebrew 的用户配置目录单独记一类（`brewhome`）**（2026-11-13 补）。Homebrew 7.x 用到「信任记录」时会自己在家目录建 `~/.homebrew`（设了 `XDG_CONFIG_HOME` 则是 `$XDG_CONFIG_HOME/homebrew`），连 `brew uninstall` 都会碰它；官方卸载脚本只清缓存和日志，不清它。所以：
+
+- 第一次用 brew 之前这个目录不存在，就记一条——不管 Homebrew 是谁装的，也不管它此刻有没有被建出来（它可能到卸载阶段才出现）；机主原来就有的不记、不动；
+- 不能记成普通的 `path`：普通路径在卸软件之前删，而卸软件用的 brew 命令会把它再建出来。它在最后一条 brew 命令之后才删。
+
 备份只在「第一次遇到原件」时做。重跑安装时路径上已是我们的东西，不能再备份，否则会盖掉真正的原件。
 
 ## 3. 公开 / 改回私有

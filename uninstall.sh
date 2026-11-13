@@ -63,6 +63,12 @@ main() {
             brew uninstall "$p" </dev/null || ms_warn "formula $p 卸载失败"
         done
     fi
+    # Homebrew 的用户配置目录原来没有 → 删掉。必须排在最后一条 brew 命令之后：
+    # 上面的 brew uninstall 自己会把它（信任记录的锁文件）再建出来，官方卸载脚本也不清它。
+    awk -F'\t' '$1=="brewhome"{print $2}' "$MS_MANIFEST" | while IFS= read -r p; do
+        ms_log "删除 $p"
+        ms_remove_path "$p"
+    done
 
     # 5. Xcode 命令行工具是我们（经 Homebrew）装的 → 删掉
     if ms_recorded clt /Library/Developer/CommandLineTools; then

@@ -7,6 +7,7 @@
 #     backup   原来就有、被我们挪走的东西（目标 = 原路径，附加 = 备份位置；卸载时放回）
 #     formula  我们装的 Homebrew formula      cask  我们装的 Homebrew cask
 #     brew     Homebrew 本身是我们装的        clt   Xcode 命令行工具是我们装的
+#     brewhome Homebrew 的用户配置目录（默认 ~/.homebrew）原来没有（卸载时在最后一条 brew 命令之后删）
 #   原来就有的软件和配置不记账，卸载时不会碰。
 
 MS_HOME="${MS_HOME:-$HOME/.mac_setup}"
@@ -72,8 +73,25 @@ ms_brew_load() {
     return 1
 }
 
+# Homebrew 的用户配置目录，取值规则照 bin/brew。brew 用到时才自己建（如 7.x 的信任记录
+# trust.json 及其锁文件，`brew uninstall` 就会碰），官方卸载脚本不清它。
+ms_brew_cfgdir() {
+    if [ -n "${XDG_CONFIG_HOME:-}" ]; then
+        printf '%s\n' "$XDG_CONFIG_HOME/homebrew"
+    elif [ -n "${HOMEBREW_XDG_CONFIG_HOME:-}" ]; then
+        printf '%s\n' "$HOMEBREW_XDG_CONFIG_HOME/homebrew"
+    else
+        printf '%s\n' "$HOME/.homebrew"
+    fi
+}
+
 # 没有 Homebrew 就装（顺带装 Xcode 命令行工具），并记账是我们装的
 ms_brew_ensure() {
+    # 第一次用 brew 之前：用户配置目录原来没有 → 记账（不管 Homebrew 是谁装的，之后冒出来的都算我们的）。
+    # 它可能到卸载阶段才被 brew 建出来，所以现在不存在也要记。
+    local cfg
+    cfg="$(ms_brew_cfgdir)"
+    [ -e "$cfg" ] || [ -L "$cfg" ] || ms_record brewhome "$cfg"
     ms_brew_load && return 0
     # 先记账再安装：安装中途被打断时，卸载仍然知道这两样是我们带来的
     local prefix=/opt/homebrew
