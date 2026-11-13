@@ -75,14 +75,17 @@ ms_brew_load() {
 # 没有 Homebrew 就装（顺带装 Xcode 命令行工具），并记账是我们装的
 ms_brew_ensure() {
     ms_brew_load && return 0
+    # 先记账再安装：安装中途被打断时，卸载仍然知道这两样是我们带来的
+    local prefix=/opt/homebrew
+    [ "$(uname -m)" = arm64 ] || prefix=/usr/local
     [ -d /Library/Developer/CommandLineTools ] || ms_record clt /Library/Developer/CommandLineTools
+    ms_record brew "$prefix"
     ms_log "安装 Homebrew（会顺带装 Xcode 命令行工具，需要几分钟）..."
     # 没有终端（如经 ssh 演练）时不能交互；有终端时让它正常提示输入 sudo 密码
     [ -t 0 ] || export NONINTERACTIVE=1
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
         || ms_die "Homebrew 安装失败"
     ms_brew_load || ms_die "Homebrew 装完后找不到 brew"
-    ms_record brew "$(brew --prefix)"
 }
 
 # ms_formula <formula>：原来就装了 → 不动、不记账

@@ -4,9 +4,10 @@
 #   local/snapshot.sh <快照名> <GitHub 快照仓库>      （通常由 publish.sh 调用）
 #
 # 读 snapshots/<名>.conf（SRC=原仓库本地检出，REF=导出哪个提交）
-# 和 snapshots/<名>.include（要导出的路径，一行一个；以 ! 开头的行是排除）。
+# 和 snapshots/<名>.include（要导出的路径前缀，一行一个，不支持通配符；以 ! 开头的行是排除）。
 # 路径里的子模块按原仓库记录的提交带过去，URL 改成 https；匿名拉不到的子模块会报错。
 # 导出的文件先过密钥检查，不过就不提交、不推送。快照仓库不存在时建成 private。
+# SNAPSHOT_LOCAL_ONLY=1：只在本地生成和检查，不建仓库、不推送（调试导出范围时用）。
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 need gh; need git; need gitleaks
@@ -38,7 +39,10 @@ git -C "$SRC" fetch --quiet origin || die "$SRC: git fetch 失败"
 src_sha="$(git -C "$SRC" rev-parse "$REF")"
 
 work="$(snapshot_workdir "$name")"
-if [ ! -d "$work/.git" ]; then
+local_only="${SNAPSHOT_LOCAL_ONLY:-}"
+if [ -n "$local_only" ]; then
+    [ -d "$work/.git" ] || { mkdir -p "$work"; git -C "$work" init --quiet -b main; }
+elif [ ! -d "$work/.git" ]; then
     if [ -z "$(visibility "$slug")" ]; then
         info "创建 private 仓库 $slug"
         gh repo create "$slug" --private --description "mac_setup 用的快照，自动生成，勿手改" >/dev/null
@@ -56,10 +60,24 @@ git -C "$work" clean -fdxq
 git -C "$SRC" archive "$src_sha" -- "${specs[@]}" | tar -x -C "$work"
 rm -f "$work/.gitmodules"
 
-# 子模块：原仓库在导出范围内记录的 gitlink，按原提交带过去
+# 子模块：原仓库在导出范围内记录的 gitlink，按原提交带过去。
+# （ls-tree 不认排除写法，所以列出全部 gitlink，再按 .include 的路径前缀自己判断）
+in_scope() {
+    local p="$1" s hit=1
+    for s in "${specs[@]}"; do
+        case "$s" in
+            ":(exclude)"*) s="${s#:(exclude)}"; s="${s%/}"
+                case "$p" in "$s"|"$s"/*) return 1 ;; esac ;;
+            *) s="${s%/}"
+                case "$p" in "$s"|"$s"/*) hit=0 ;; esac ;;
+        esac
+    done
+    return $hit
+}
 sub_bad=0; subs=""
 while read -r _mode _type sha path; do
     [ "$_type" = commit ] || continue
+    in_scope "$path" || continue
     key="$(git -C "$SRC" config --blob "$src_sha:.gitmodules" --get-regexp '^submodule\..*\.path$' \
             | awk -v p="$path" '$2==p {sub(/\.path$/,"",$1); print $1}')"
     url="$(git -C "$SRC" config --blob "$src_sha:.gitmodules" --get "$key.url")"
@@ -74,7 +92,7 @@ while read -r _mode _type sha path; do
     subs="$subs$sha $path
 "
 done <<TREE
-$(git -C "$SRC" ls-tree -r "$src_sha" -- "${specs[@]}")
+$(git -C "$SRC" ls-tree -r "$src_sha")
 TREE
 [ "$sub_bad" = 0 ] || die "有子模块拉不到，快照没有提交。"
 
@@ -96,4 +114,8 @@ else
     git -C "$work" commit --quiet -m "snapshot of ${src_sha:0:12}"
     info "快照已更新（来源 ${src_sha:0:9}）"
 fi
-git -C "$work" push --quiet origin HEAD:main
+if [ -n "$local_only" ]; then
+    info "只在本地生成，没有推送：$work"
+else
+    git -C "$work" push --quiet origin HEAD:main
+fi
