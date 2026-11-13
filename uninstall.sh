@@ -13,7 +13,7 @@ main() {
     MS_SRC="$self_dir"
     export MS_SRC
     . "$MS_SRC/lib/common.sh"
-    [ -f "$MS_MANIFEST" ] || ms_die "找不到安装清单 $MS_MANIFEST，没有可恢复的东西"
+    [ -f "$MS_MANIFEST" ] || ms_die "找不到安装清单 ${MS_MANIFEST}，没有可恢复的东西"
     ms_brew_load || true
 
     # 1. 各模块自己的清理（登录态、应用设置等），按安装的反序

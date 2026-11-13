@@ -65,7 +65,7 @@ for name in $selected; do
         ok="$ok $name"
     else
         failed="$failed $name"
-        ms_warn "模块 $name 失败，继续跑后面的模块（日志: $MS_LOG）"
+        ms_warn "模块 $name 失败，继续跑后面的模块（日志: ${MS_LOG}）"
     fi
 done
 

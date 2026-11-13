@@ -28,7 +28,7 @@ bad=0
 while read -r slug mode arg; do
     [ -n "$slug" ] || continue
     guard_slug "$slug"
-    info "检查 $slug（$mode）"
+    info "检查 ${slug}（${mode}）"
     case "$mode" in
         direct)
             path="$(expand_path "$arg")"

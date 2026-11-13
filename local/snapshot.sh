@@ -65,7 +65,7 @@ while read -r _mode _type sha path; do
     url="$(git -C "$SRC" config --blob "$src_sha:.gitmodules" --get "$key.url")"
     url="$(printf '%s' "$url" | sed -E 's#^git@([^:]+):#https://\1/#')"
     if ! GIT_TERMINAL_PROMPT=0 git -c credential.helper= ls-remote "$url" >/dev/null 2>&1; then
-        warn "子模块 $path（$url）匿名拉不到——要么在 .include 里用 !$path 排除，要么把它登记进 repos.txt"
+        warn "子模块 ${path}（${url}）匿名拉不到——要么在 .include 里用 !$path 排除，要么把它登记进 repos.txt"
         sub_bad=1; continue
     fi
     rmdir "$work/$path" 2>/dev/null || true
