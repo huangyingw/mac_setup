@@ -8,6 +8,14 @@ set -uo pipefail
 LABEL="com.huangyingw.qwen3-asr"
 AGENT="$HOME/Library/LaunchAgents/$LABEL.plist"
 KEYCHAIN_SVC="app.spokenly.FSDService"
+PREFS="$HOME/Library/Preferences/app.spokenly.plist"
+
+# 清单里没有本模块的记录 → 什么都不做。
+# （恢复原状会依次跑每个模块的清理；用别的状态目录、或者没装过本模块时，不能去动对方正开着的 Spokenly）
+if ! ms_recorded path "$PREFS" && ! ms_recorded path "$AGENT" \
+        && ! ms_recorded cask spokenly && ! ms_recorded keychain "$KEYCHAIN_SVC"; then
+    exit 0
+fi
 
 # 1. 停掉转写服务（launchd 配置是我们放的才停），等它退干净，免得目录被删之后又被写出来
 if ms_recorded path "$AGENT"; then

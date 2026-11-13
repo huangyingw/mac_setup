@@ -99,19 +99,28 @@ ms_brew_ensure() {
     [ -d /Library/Developer/CommandLineTools ] || ms_record clt /Library/Developer/CommandLineTools
     ms_record brew "$prefix"
     ms_log "安装 Homebrew（会顺带装 Xcode 命令行工具，需要几分钟）..."
-    # 没有终端（如经 ssh 演练）时不能交互；有终端时让它正常提示输入 sudo 密码
-    [ -t 0 ] || export NONINTERACTIVE=1
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-        || ms_die "Homebrew 安装失败"
+    # 有终端时让它正常提示输入 sudo 密码；没有终端（如经 ssh 演练）时不能交互，
+    # 并且不让它读标准输入——那里可能排着调用方后面要执行的命令
+    if [ -t 0 ]; then
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+            || ms_die "Homebrew 安装失败"
+    else
+        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null \
+            || ms_die "Homebrew 安装失败"
+    fi
     ms_brew_load || ms_die "Homebrew 装完后找不到 brew"
 }
+
+# brew install 会读标准输入：调用方的标准输入里若还排着后续命令（一次送多条命令、粘贴多行），
+# 会被它全部读走——安装成功，后面的命令却一条不执行、也不报错。所以一律接 /dev/null。
+# （需要 sudo 密码时 sudo 自己从终端读，不走标准输入。）
 
 # ms_formula <formula>：原来就装了 → 不动、不记账
 ms_formula() {
     ms_brew_ensure
     if brew list --formula "$1" >/dev/null 2>&1; then return 0; fi
     ms_log "brew install $1"
-    brew install "$1" || return 1
+    brew install "$1" </dev/null || return 1
     ms_record formula "$1"
 }
 
@@ -124,7 +133,7 @@ ms_cask() {
         return 0
     fi
     ms_log "brew install --cask $1"
-    brew install --cask "$1" || return 1
+    brew install --cask "$1" </dev/null || return 1
     ms_record cask "$1"
 }
 
