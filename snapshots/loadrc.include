@@ -1,0 +1,94 @@
+# 从 loadrc 导出到快照的路径（白名单）。写法见 local/snapshot.sh 开头：
+#   一行一个路径前缀，不支持通配符；! 开头是排除；@ 开头是把一个匿名拉不到的子模块整个并进来。
+# 原则：只导目标机用得上的。漏导 = 目标机少个功能（看得见、能补）；多导 = 泄露（收不回）。
+# 密钥检查工具查不出明文口令和内网地址这类东西，所以 bashrc / vishrc / agentrc / iterm2rc
+# 这些「什么都往里放」的目录一律逐个文件写，不整目录导。
+# 每一项为什么要、怎么增补，见 docs/decisions/loadrc-module.md。
+
+# ---- shell：目标机的 ~/.zshrc 由 modules/20-loadrc/zshrc 提供，只加载下面这几个 rc ----
+.pathrc
+.envrc
+.gitrc
+.shellrc
+.macosrc
+.gorc
+oh-my-zsh
+
+# ---- tmux ----
+.tmux.conf
+.tmux/plugins/tpm
+tmuxrc
+
+# ---- vim / nvim ----
+vimrc
+!vimrc/tests
+@vimrc/.vim/bundle/vim-anyfold
+@vimrc/.vim/bundle/vim-autoformat
+neovim/init.lua
+neovim/.config/nvim/lua
+update_project
+
+# ---- git：全局配置、钩子、别名用到的脚本 ----
+gitrc
+!gitrc/gbil.log
+.git-templates
+
+# ---- vim 命令、tmux、git 脚本调用到的通用脚本（逐个文件） ----
+bashrc/append_num.sh
+bashrc/binaryGrep.sh
+bashrc/compare_unique_lines_sort.sh
+bashrc/copy.sh
+bashrc/fcscope.sh
+bashrc/fgh.sh
+bashrc/file_move.sh
+bashrc/find_up.sh
+bashrc/find_up_folder.sh
+bashrc/find_up_goto.sh
+bashrc/fnotinuse.sh
+bashrc/fr.sh
+bashrc/get_first_column_of_file.sh
+bashrc/jformat.sh
+bashrc/kill_port.sh
+bashrc/logFilter.sh
+bashrc/removing_ansi_color_codes.sh
+bashrc/rename.sh
+bashrc/retry.sh
+bashrc/run.sh
+bashrc/run_once_script_checker.sh
+bashrc/run_python_script.sh
+bashrc/runb.sh
+bashrc/select_action.sh
+bashrc/split.sh
+bashrc/tmux-resolve-session.sh
+bashrc/tmux.sh
+bashrc/vi.sh
+vishrc/cat_du.sh
+vishrc/cat_move.sh
+vishrc/cat_rate.sh
+vishrc/cat_run.sh
+vishrc/kdiffall.sh
+vishrc/prune.sh
+vishrc/rm_cat.sh
+vishrc/sort_entries.sh
+vishrc/vdebug.sh
+vishrc/vrun.sh
+vishrc/vsearch.sh
+
+# ---- multi-agent 工具 ----
+clauderc
+!clauderc/tests
+!clauderc/sync_claude_to.sh
+!clauderc/sync_claude_config.sh
+agentrc/auto-compact.json
+agentrc/dispatch.json
+agentrc/model-autoswitch.json
+converge/crontab_lock.sh
+
+# ---- iTerm2：标签染色守护进程与相关设置 ----
+iterm2rc/bell-sound.json
+iterm2rc/focus_state.py
+iterm2rc/host-change-offers-off.sh
+iterm2rc/install.sh
+iterm2rc/iterm2-autolaunch-restart-bell-daemon.py
+iterm2rc/iterm2-bell-daemon.py
+iterm2rc/iterm2_venv.py
