@@ -13,3 +13,4 @@ huangyingw/mac_setup        direct    .
 huangyingw/claude-config    direct    ~/.claude
 huangyingw/codex-config     direct    ~/.codex
 huangyingw/loadrc-snapshot  snapshot  loadrc
+huangyingw/voice_input-snapshot  snapshot  voice_input
