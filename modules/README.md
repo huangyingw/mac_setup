@@ -35,3 +35,18 @@ set -euo pipefail
 # 参考机上：提交并推送后
 ssh mba.local 'MS_REFRESH=1 bash ~/.mac_setup/src/install.sh <模块名>'   # 重新下载仓库并只跑这一个模块
 ```
+
+## 演练机是几个分支共用的
+
+`mba` 同时被各域分支拿来测试，Homebrew 和 Xcode 命令行工具只有一份。**记着「这两样是我们装的」的是默认状态目录 `~/.mac_setup` 里的清单**：用默认状态目录跑 `uninstall.sh`，会把 Homebrew 连同经它装的全部软件、以及命令行工具一起卸掉，别的分支正在用的测试环境随之失效（重装要十几分钟）。
+
+测自己模块的「安装 → 卸载还原」时，用自己的状态目录，清单里就只有自己这次装的东西，卸载不会碰 Homebrew：
+
+```bash
+ssh mba.local 'export MS_HOME=$HOME/.mac_setup_<分支名>; bash -c "$(curl -fsSL https://raw.githubusercontent.com/huangyingw/mac_setup/integration/install.sh)" _ <模块名>'
+ssh mba.local 'MS_HOME=$HOME/.mac_setup_<分支名> bash ~/.mac_setup_<分支名>/src/uninstall.sh'
+```
+
+- 状态目录必须以 `~/.mac_setup` 开头（卸载结尾只肯删这样的目录）；
+- 卸载会依次跑 `modules/` 下**每个**模块的 `uninstall.sh`，所以模块的卸载脚本只能动自己记过账的东西，清单里没有就什么都不做；
+- 用默认状态目录的整套卸载（含卸 Homebrew）只在 `integration` 做整体演练时跑。
