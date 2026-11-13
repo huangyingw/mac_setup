@@ -10,4 +10,4 @@
 | `spokenly` | `worktrees/spokenly` | 语音输入域：`modules/40-spokenly`（安装 Spokenly 与本机转写服务、配置与参考机一致、按 16GB 内存的标准下载模型）、`snapshots/voice_input.*`（从 voice_input 仓库导出哪些文件） |
 | `integration-p1` | `worktrees/integration-p1` | 目标机家目录下多出 `~/.homebrew`，清单里没有记，恢复原状后还在(由 integration 忙碌改道) |
 | `loadrc-p1` | `worktrees/loadrc-p1` | `30-agents` 装完后，哪些东西要等 `20-loadrc` 才能用（目标机实测现状）(由 loadrc 忙碌改道) |
-| `integration-p2` | `worktrees/integration-p2` | 快照导出：命中参考机忽略规则的文件没有进快照（全局 git 配置因此缺失）(由 integration 忙碌改道) |
+| `integration-p2` | `worktrees/integration-p2` | 安装清单（AGENTS.md 第 3 节）里没有 `20-loadrc` 模块要装的几个依赖(由 integration 忙碌改道) |
