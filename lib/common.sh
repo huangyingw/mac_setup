@@ -8,6 +8,7 @@
 #     formula  我们装的 Homebrew formula      cask  我们装的 Homebrew cask
 #     brew     Homebrew 本身是我们装的        clt   Xcode 命令行工具是我们装的
 #     brewhome Homebrew 的用户配置目录（默认 ~/.homebrew）原来没有（卸载时在最后一条 brew 命令之后删）
+#     brewcache 我们下载到 Homebrew 缓存里的安装包（Homebrew 原来就有时才记；卸载软件之后删）
 #   原来就有的软件和配置不记账，卸载时不会碰。
 
 MS_HOME="${MS_HOME:-$HOME/.mac_setup}"
@@ -111,16 +112,52 @@ ms_brew_ensure() {
     ms_brew_load || ms_die "Homebrew 装完后找不到 brew"
 }
 
+# Homebrew 的下载缓存：brew install 把安装包（连同依赖的）下载到缓存目录，brew uninstall（含 --zap）不清它。
+# Homebrew 是我们装的 → 卸载时整个缓存目录一起没，不用管；它原来就有时，我们下载的安装包要自己清。
+# 做法：每次 brew install 前后各列一遍缓存，多出来的条目记账（brewcache），卸载时按清单删。
+# 不按软件名去匹配：依赖的安装包叫什么事先不知道，而且对方原来就缓存着的同名安装包不该删。
+
+# ms_brew_cache_list：列出缓存里的安装包条目，每行一个绝对路径
+# （顶层和 Cask/ 下的链接、downloads/ 下的文件；brew 自己运转用的数据如 api/、bootsnap/ 不算）
+ms_brew_cache_list() {
+    local c
+    c="$(brew --cache 2>/dev/null)" || return 0
+    if [ -z "$c" ] || [ ! -d "$c" ]; then return 0; fi
+    {
+        find "$c" -mindepth 1 -maxdepth 1 -type l 2>/dev/null || true
+        if [ -d "$c/Cask" ]; then find "$c/Cask" -mindepth 1 -maxdepth 1 -type l 2>/dev/null || true; fi
+        if [ -d "$c/downloads" ]; then find "$c/downloads" -mindepth 1 -maxdepth 1 -type f 2>/dev/null || true; fi
+    } | LC_ALL=C sort
+}
+
 # brew install 会读标准输入：调用方的标准输入里若还排着后续命令（一次送多条命令、粘贴多行），
 # 会被它全部读走——安装成功，后面的命令却一条不执行、也不报错。所以一律接 /dev/null。
 # （需要 sudo 密码时 sudo 自己从终端读，不走标准输入。）
+
+# ms_brew_install <brew install 的参数...>：跑 brew install，并把它新下载进缓存的安装包记账。
+# 安装失败也记：下到一半的东西同样是我们带来的。
+ms_brew_install() {
+    local before="" rc=0 f
+    if ! ms_recorded brew /opt/homebrew && ! ms_recorded brew /usr/local; then
+        before="$(mktemp "$MS_HOME/brewcache.XXXXXX" 2>/dev/null)" || before=""
+        if [ -n "$before" ]; then ms_brew_cache_list > "$before"; fi
+    fi
+    brew install "$@" </dev/null || rc=$?
+    if [ -n "$before" ]; then
+        ms_brew_cache_list | LC_ALL=C comm -13 "$before" - | while IFS= read -r f; do
+            ms_record brewcache "$f"
+        done
+        rm -f "$before"
+    fi
+    return "$rc"
+}
 
 # ms_formula <formula>：原来就装了 → 不动、不记账
 ms_formula() {
     ms_brew_ensure
     if brew list --formula "$1" >/dev/null 2>&1; then return 0; fi
     ms_log "brew install $1"
-    brew install "$1" </dev/null || return 1
+    ms_brew_install "$1" || return 1
     ms_record formula "$1"
 }
 
@@ -133,7 +170,7 @@ ms_cask() {
         return 0
     fi
     ms_log "brew install --cask $1"
-    brew install --cask "$1" </dev/null || return 1
+    ms_brew_install --cask "$1" || return 1
     ms_record cask "$1"
 }
 
@@ -149,4 +186,13 @@ ms_remove_path() {
     esac
     [ -e "$p" ] || [ -L "$p" ] || return 0
     rm -rf -- "$p" 2>/dev/null || sudo rm -rf -- "$p"
+}
+
+# ms_remove_cached <绝对路径>：删一个记为我们下载的缓存条目。只删文件和链接，不删目录。
+ms_remove_cached() {
+    local p="$1"
+    case "$p" in
+        ""|[!/]*|*..*) ms_warn "拒绝删除（不是正常的绝对路径）: $p"; return 0 ;;
+    esac
+    if [ -L "$p" ] || [ -f "$p" ]; then rm -f -- "$p"; fi
 }
