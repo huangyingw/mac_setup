@@ -46,6 +46,8 @@
 | 项 | 参考机上的现状（2026-11-13） |
 |---|---|
 | Spokenly（语音输入） | `/Applications/Spokenly.app`，2.34.1；Homebrew 有 cask `spokenly` |
+| 本机转写服务（Spokenly 听写实际用的模型在这里） | `mlx_audio.server`（mlx-audio 0.5.7），由 launchd（`com.huangyingw.qwen3-asr`）登录即拉起，监听 `127.0.0.1:8765`；目录 `~/.local/share/qwen3-asr-server`（Python 3.12 环境 + 模型 + 日志，5.1G）；模型 `Qwen3-ASR-1.7B-bf16`；来源是 GitHub `huangyingw/voice_input`（私有） |
+| uv（建转写服务的 Python 环境用） | Homebrew `uv` 0.13.7 |
 | iTerm2 | `/Applications/iTerm.app` |
 | git | Homebrew，`/opt/homebrew/bin/git` |
 | nvim | Homebrew `neovim` 0.12.6 |
@@ -57,6 +59,7 @@
 各项的补充要求（用户 2026-11-13 定）：
 
 - **Spokenly**：不需要登录；要**安装**、把配置做成和参考机**一模一样**、并**下载好语音模型**。模型按 `mbp` 的标准选——即按 **16GB 内存**的机器选合适的模型（参考机 `studio` 是 64GB，不能直接照搬它的模型选择；`mba` 也是 16GB）。
+- **本机转写服务**（2026-11-13 补登记——`40-spokenly` 模块做完之后才登记的，顺序上晚了）：参考机上 Spokenly 的听写模型不是它内置的，而是指向这套本机服务，所以上一条的「下载好语音模型」落到实处就是**把这套服务连同模型一起装好**。目标机上装的是：Homebrew 的 `uv`、服务目录 `~/.local/share/qwen3-asr-server`（Python 环境、依赖、模型、日志都收在里面，约 3.8G）、16GB 档的模型 `Qwen3-ASR-0.6B-8bit`、一个 launchd 配置。`voice_input` 本身不公开（里面有个人口述的转写文本），只经快照 `huangyingw/voice_input-snapshot` 公开模块用到的几个文件（白名单 `snapshots/voice_input.include`）。只支持 Apple 芯片。详见 `docs/decisions/spokenly.md`。
 - **登录态**：Claude Code、Codex、Chrome 的账号登录不随仓库走，在目标机上**人工登录**。
 
 ## 4. 硬约束

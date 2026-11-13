@@ -11,3 +11,5 @@
 | `integration-p1` | `worktrees/integration-p1` | 目标机家目录下多出 `~/.homebrew`，清单里没有记，恢复原状后还在(由 integration 忙碌改道) |
 | `loadrc-p1` | `worktrees/loadrc-p1` | 演练机上你这个域的一部分测试环境被 spokenly 分支误删了(由 loadrc 忙碌改道) |
 | `integration-p2` | `worktrees/integration-p2` | 安装清单（AGENTS.md 第 3 节）里没有 `20-loadrc` 模块要装的几个依赖(由 integration 忙碌改道) |
+| `integration-p3` | `worktrees/integration-p3` | AGENTS.md 第 3 节的清单里没有「本机转写服务」这一项(由 integration 忙碌改道) |
+| `integration-p4` | `worktrees/integration-p4` | Homebrew 原来就有时，恢复原状后它的下载缓存里还留着我们装过的安装包(由 integration 忙碌改道) |
