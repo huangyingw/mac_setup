@@ -1,0 +1,14 @@
+# 从 voice_input 导出到快照的路径（白名单，一行一个）。modules/40-spokenly/install.sh 只读这几个文件。
+# 评测数据（eval/*.json，含个人口述转写文本）、文档、按电脑名选配置的安装脚本都不导出。
+
+# 本机转写服务：启动脚本、launchd 配置模板、依赖清单
+service/run.sh
+service/com.huangyingw.qwen3-asr.plist
+eval/requirements.txt
+
+# 16GB 内存那一档用的模型（以 mbp 为准）
+service/model.mbp
+
+# Spokenly 设置：公共部分 + mbp 那一档的覆盖项
+service/spokenly-settings.json
+service/spokenly-settings.mbp.json

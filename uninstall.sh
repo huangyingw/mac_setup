@@ -74,9 +74,11 @@ main() {
     if [ -f "$MS_HOME/.keep" ]; then
         ms_warn "有原件没能放回，保留 $MS_HOME 供手工处理"
     else
-        cd /
-        rm -rf "$HOME/.mac_setup"
-        echo "[mac_setup] 已恢复原状。"
+        # 删的是本次用的状态目录（MS_HOME 可能被改过，不能写死 ~/.mac_setup，否则会删错别人的清单）
+        case "$MS_HOME" in
+            "$HOME"/.mac_setup*) cd /; rm -rf -- "$MS_HOME"; echo "[mac_setup] 已恢复原状。" ;;
+            *) ms_warn "状态目录 $MS_HOME 不在预期位置，没有删，请手工处理" ;;
+        esac
     fi
 }
 
