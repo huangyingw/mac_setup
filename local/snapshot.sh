@@ -12,6 +12,8 @@
 #   !路径         排除（也可以写子模块里面的路径）
 # 后两种「并进快照」的文件取自 SRC 里该子模块的本地检出、原仓库记录的那个提交，不联网。
 # 导出的文件先过密钥检查，不过就不提交、不推送。快照仓库不存在时建成 private。
+# 清单里的文件不受任何忽略规则影响（参考机的全局忽略清单、导出内容自带的 .gitignore）；
+# 提交前会核对导出的文件是否全部进了快照，有漏的就报出来、不提交。
 # SNAPSHOT_LOCAL_ONLY=1：只在本地生成和检查，不建仓库、不推送（调试导出范围时用）。
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
@@ -188,18 +190,28 @@ printf '由 mac_setup 的 local/snapshot.sh 自动生成，勿手改。\n来源�
 info "检查快照内容（$(cd "$work" && find . -path ./.git -prune -o -type f -print | wc -l | tr -d ' ') 个文件）"
 scan_tree "$work" || die "快照内容没通过密钥检查，没有提交、没有推送。把问题文件从 snapshots/$name.include 里排除后重跑。"
 
-git -C "$work" add -A
+# -f：导出的文件在原仓库里都是被跟踪的，不能让忽略规则把它们挡在快照外面
+# （参考机的全局忽略清单、导出内容自带的 .gitignore 都可能命中，例如 gitrc/.gitconfig）
+git -C "$work" add -A -f
 while read -r sha path; do
     [ -n "$sha" ] || continue
     git -C "$work" update-index --add --cacheinfo "160000,$sha,$path"
 done <<SUBS
 $subs
 SUBS
+# 核对：导出目录里的每个文件都要进待提交内容。有漏的就不提交，免得快照悄悄缺文件。
+left_out="$(git -C "$work" -c core.quotePath=false ls-files --others)"
+if [ -n "$left_out" ]; then
+    warn "这些文件导出了，却进不了快照："
+    printf '%s\n' "$left_out" | sed 's/^/    /' >&2
+    die "快照没有提交、没有推送。"
+fi
+committed="$(git -C "$work" ls-files | wc -l | tr -d ' ')"
 if git -C "$work" diff --cached --quiet; then
-    info "快照没有变化（来源 ${src_sha:0:9}）"
+    info "快照没有变化（来源 ${src_sha:0:9}，快照里共 $committed 项）"
 else
     git -C "$work" commit --quiet -m "snapshot of ${src_sha:0:12}"
-    info "快照已更新（来源 ${src_sha:0:9}）"
+    info "快照已更新（来源 ${src_sha:0:9}，快照里共 $committed 项）"
 fi
 if [ -n "$local_only" ]; then
     info "只在本地生成，没有推送：$work"
