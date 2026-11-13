@@ -1,7 +1,7 @@
 #!/bin/bash
 # 语音输入的清理里「清单管不到」的部分：停掉转写服务和 Spokenly、收回系统授权、清掉钥匙串里的记录。
 # 文件和目录（应用设置、听写历史、转写服务目录、launchd 配置）已记在清单里，由 uninstall.sh 统一删除 / 放回；
-# Spokenly 本体和 uv 由 uninstall.sh 按清单卸载。
+# Spokenly 本体和 uv 由 uninstall.sh 按清单卸载；共用的上级目录（newdir）也由它统一处理。
 set -uo pipefail
 . "$MS_SRC/lib/common.sh"
 
@@ -13,8 +13,7 @@ PREFS="$HOME/Library/Preferences/app.spokenly.plist"
 # 清单里没有本模块的记录 → 什么都不做。
 # （恢复原状会依次跑每个模块的清理；用别的状态目录、或者没装过本模块时，不能去动对方正开着的 Spokenly）
 if ! ms_recorded path "$PREFS" && ! ms_recorded path "$AGENT" \
-        && ! ms_recorded cask spokenly && ! ms_recorded keychain "$KEYCHAIN_SVC" \
-        && ! grep -q "^newdir$(printf '\t')" "$MS_MANIFEST" 2>/dev/null; then
+        && ! ms_recorded cask spokenly && ! ms_recorded keychain "$KEYCHAIN_SVC"; then
     exit 0
 fi
 
@@ -67,22 +66,6 @@ if [ -n "$cache" ] && [ -d "$cache" ]; then
     if ms_recorded formula uv; then drop_cached "$cache"/uv--* "$cache"/uv_bottle_manifest--*; fi
 fi
 
-# 6. 我们新建的共用上级目录（~/.local、~/.local/share、~/Library/LaunchAgents）：
-#    先删掉里面属于本模块的东西，然后只在目录已经空了的时候才删目录本身——
-#    别人后来放进去的东西不碰。
-DEST="$HOME/.local/share/qwen3-asr-server"
-if ms_recorded path "$AGENT"; then ms_remove_path "$AGENT"; fi
-if ms_recorded path "$DEST"; then ms_remove_path "$DEST"; fi
-awk -F'\t' '$1=="newdir"{print $2}' "$MS_MANIFEST" | tail -r | while IFS= read -r d; do
-    case "$d" in
-        "$HOME"/?*)
-            [ -d "$d" ] || continue
-            rm -f "$d/.DS_Store"
-            rmdir "$d" 2>/dev/null || ms_log "保留 ${d}（里面还有别的东西）"
-            ;;
-    esac
-done
-
-# 7. 让系统的设置缓存重新读盘：接下来设置文件会被直接删掉 / 放回
+# 6. 让系统的设置缓存重新读盘：接下来设置文件会被直接删掉 / 放回
 if ms_recorded path "$PREFS"; then killall -u "$(id -un)" cfprefsd 2>/dev/null; fi
 exit 0
