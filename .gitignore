@@ -1,0 +1,21 @@
+# 索引 / 临时文件（Vim 工具链生成，与其它项目一致）
+cscope.*
+cscopesourcefile*
+files.proj*
+*.findresult
+*.findresult.tmp
+*.runresult
+*.runresult.tmp
+*.bak
+includefile.conf
+prunefile.conf
+prunefix.conf
+prunefix.rsync
+rsync.files
+.DS_Store
+
+# 凭证绝不入库（本仓库在安装窗口期会被改成公开）
+.secrets.md
+*.local.md
+*.local.json
+.env
