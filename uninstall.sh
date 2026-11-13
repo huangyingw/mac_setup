@@ -72,6 +72,9 @@ main() {
                 ms_remove_cached "$p"
             done
         fi
+        # 我们装的 formula（含依赖）放进 Homebrew 的 etc 的配置文件：brew uninstall 不删，按清单删，
+        # 还装着的 formula 仍在用的保留。对方原来就有的没记账，不动。
+        ms_brew_etc_cleanup
     fi
     # Homebrew 的用户配置目录原来没有 → 删掉。必须排在最后一条 brew 命令之后：
     # 上面的 brew uninstall 自己会把它（信任记录的锁文件）再建出来，官方卸载脚本也不清它。

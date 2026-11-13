@@ -10,6 +10,8 @@
 #     brewhome Homebrew 的用户配置目录（默认 ~/.homebrew）原来没有（卸载时在最后一条 brew 命令之后删）
 #     brewcache 我们下载到 Homebrew 缓存里的安装包（Homebrew 原来就有时才记；卸载软件之后删）
 #     newdir   我们建出来的「共用上级目录」（~/.local、~/.config 之类；卸载时只在空了才删）
+#     brewetc  brew install 时（含连带装的依赖）在 Homebrew 的 etc 下新冒出来的条目
+#              （Homebrew 原来就有时才记；卸载时已经没有还装着的 formula 提供它才删）
 #   原来就有的软件和配置不记账，卸载时不会碰。
 
 MS_HOME="${MS_HOME:-$HOME/.mac_setup}"
@@ -163,13 +165,28 @@ ms_brew_cache_list() {
 # 会被它全部读走——安装成功，后面的命令却一条不执行、也不报错。所以一律接 /dev/null。
 # （需要 sudo 密码时 sudo 自己从终端读，不走标准输入。）
 
-# ms_brew_install <brew install 的参数...>：跑 brew install，并把它新下载进缓存的安装包记账。
-# 安装失败也记：下到一半的东西同样是我们带来的。
+# Homebrew 的 etc：有的 formula（多半是连带装上的依赖，如 openssl、ca-certificates）会往
+# $(brew --prefix)/etc 放配置文件，brew uninstall 不删（只打一行警告）。处理办法同缓存：装之前和
+# 装之后各列一遍 etc 的顶层条目，新冒出来的记为 brewetc。
+
+# ms_brew_etc_list：列出 Homebrew 的 etc 下的顶层条目，每行一个绝对路径
+ms_brew_etc_list() {
+    local prefix
+    prefix="$(brew --prefix 2>/dev/null)" || return 0
+    case "$prefix" in /?*) ;; *) return 0 ;; esac
+    [ -d "$prefix/etc" ] || return 0
+    find "$prefix/etc" -mindepth 1 -maxdepth 1 2>/dev/null | LC_ALL=C sort
+}
+
+# ms_brew_install <brew install 的参数...>：跑 brew install，并把它新下载进缓存的安装包、
+# 新放进 etc 的配置记账。安装失败也记：下到一半的东西同样是我们带来的。
 ms_brew_install() {
-    local before="" rc=0 f
+    local before="" before_etc="" rc=0 f
     if ! ms_recorded brew /opt/homebrew && ! ms_recorded brew /usr/local; then
         before="$(mktemp "$MS_HOME/brewcache.XXXXXX" 2>/dev/null)" || before=""
         if [ -n "$before" ]; then ms_brew_cache_list > "$before"; fi
+        before_etc="$(mktemp "$MS_HOME/brewetc.XXXXXX" 2>/dev/null)" || before_etc=""
+        if [ -n "$before_etc" ]; then ms_brew_etc_list > "$before_etc"; fi
     fi
     brew install "$@" </dev/null || rc=$?
     if [ -n "$before" ]; then
@@ -178,7 +195,38 @@ ms_brew_install() {
         done
         rm -f "$before"
     fi
+    if [ -n "$before_etc" ]; then
+        ms_brew_etc_list | LC_ALL=C comm -13 "$before_etc" - | while IFS= read -r f; do
+            ms_record brewetc "$f"
+        done
+        rm -f "$before_etc"
+    fi
     return "$rc"
+}
+
+# ms_brew_etc_cleanup：处理清单里的 brewetc（卸完我们装的软件之后调用）。
+# 还装着的某个 formula 也提供同名条目（它的 keg 里 .bottle/etc 下有）→ 保留，那是对方在用的；否则删。
+ms_brew_etc_cleanup() {
+    local cellar p name k keep
+    cellar="$(brew --cellar 2>/dev/null)" || cellar=""
+    case "$cellar" in /?*) ;; *) cellar="" ;; esac
+    awk -F'\t' '$1=="brewetc"{print $2}' "$MS_MANIFEST" | while IFS= read -r p; do
+        if [ ! -e "$p" ] && [ ! -L "$p" ]; then continue; fi
+        name="$(basename "$p")"
+        keep=""
+        if [ -n "$cellar" ]; then
+            for k in "$cellar"/*/*/.bottle/etc/"$name"; do
+                if [ -e "$k" ] || [ -L "$k" ]; then keep="$k"; break; fi
+            done
+        fi
+        if [ -n "$keep" ]; then
+            keep="${keep#"$cellar"/}"
+            ms_log "保留 ${p}：还装着的 ${keep%%/*} 也用它"
+            continue
+        fi
+        ms_log "删除 ${p}（我们装的 formula 留下的配置）"
+        ms_remove_path "$p"
+    done
 }
 
 # ms_formula <formula>：原来就装了 → 不动、不记账
