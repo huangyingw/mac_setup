@@ -14,6 +14,10 @@ MS_BRANCH="${MS_BRANCH:-integration}"
 MS_HOME="${MS_HOME:-$HOME/.mac_setup}"
 export MS_SLUG MS_BRANCH MS_HOME
 
+# 标准输入不是终端时（一次送多条命令、经管道运行），本脚本和各模块一律不读它：
+# 那里排着的是调用方后面要执行的命令，被某个安装器读走就会悄悄少执行。
+[ -t 0 ] || exec </dev/null
+
 self_dir=""
 case "${BASH_SOURCE[0]:-}" in
     */*) self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" ;;

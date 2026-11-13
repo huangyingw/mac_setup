@@ -22,7 +22,7 @@ main() {
     for d in $dirs; do
         if [ -f "$d/uninstall.sh" ]; then
             ms_log "==> 清理模块 $(basename "$d")"
-            /bin/bash "$d/uninstall.sh" || ms_warn "模块 $(basename "$d") 清理时报错，继续"
+            /bin/bash "$d/uninstall.sh" </dev/null || ms_warn "模块 $(basename "$d") 清理时报错，继续"
         fi
     done
 
