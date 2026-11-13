@@ -104,6 +104,13 @@ config_repo codex-config "$HOME/.codex"
 
 # ~/.claude.json 是 Claude Code 放在家目录的状态文件（登录账号、项目记录、界面开关）。
 # 对方原有的先挪走，免得我的账号和项目记录混进去；卸载时删掉我的、放回对方的。
+# 它的伴生文件（.backup、写到一半的 .tmp.*）名字不固定：只在第一次运行时把对方原有的逐个挪走，
+# 之后再出现的都是我的（重跑时不能再挪，否则会把我的当成对方的、卸载时放回去）。
+if ! ms_recorded path "$HOME/.claude.json"; then
+    for f in "$HOME"/.claude.json.*; do
+        if [ -e "$f" ]; then ms_backup "$f"; fi
+    done
+fi
 ms_claim "$HOME/.claude.json"
 if [ ! -e "$HOME/.claude.json" ]; then
     # 参考机在这里关掉了「恢复会话时的摘要提示」。这个开关只在本文件里生效（见 settings.json 里的说明）。
@@ -145,9 +152,49 @@ else
     ms_cask codex || ms_die "Codex 安装失败"
 fi
 
+# 两个工具接 Chrome 扩展时，会各往 Chrome 的目录里写一份「本机消息」清单；Codex 还会在 ~/.cache 下放运行时。
+# 这些都在配置目录之外，先记上（对方原有的会先备份）。
+NMH_DIR="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
+ms_claim "$NMH_DIR/com.anthropic.claude_code_browser_extension.json"
+ms_claim "$NMH_DIR/com.openai.codexextension.json"
+ms_claim "$HOME/.cache/codex-runtimes"
+
+# ---------- 4. Claude Code 插件 ----------
+# settings.json 的 enabledPlugins 里标为 true 的插件要另外下载才生效（下载下来的东西不在配置仓库里）。
+# 参考机启用的都来自官方插件市场；别的市场这里不认识，如实提示。
+
+plugins_setup() {
+    local settings="$HOME/.claude/settings.json" want id installed keep="$TMP_DIR/settings.json.keep"
+    [ -f "$settings" ] || return 0
+    want="$(sed -n '/"enabledPlugins"/,/}/p' "$settings" | sed -n 's/^ *"\([^"]*\)": *true.*/\1/p')"
+    [ -n "$want" ] || return 0
+    installed="$("$CLAUDE_BIN" plugin list 2>/dev/null </dev/null || true)"
+    # 「添加市场」会往 settings.json 里加一段参考机没有的内容；装完把文件原样放回去（市场另有地方记着，不受影响）
+    mkdir -p "$TMP_DIR"
+    cp "$settings" "$keep"
+    for id in $want; do
+        case "$installed" in *"$id"*) continue ;; esac
+        case "$id" in
+            *@claude-plugins-official)
+                "$CLAUDE_BIN" plugin marketplace list 2>/dev/null </dev/null | grep -q claude-plugins-official \
+                    || "$CLAUDE_BIN" plugin marketplace add anthropics/claude-plugins-official >/dev/null 2>&1 </dev/null \
+                    || true
+                if "$CLAUDE_BIN" plugin install "$id" >/dev/null 2>&1 </dev/null; then
+                    ms_log "已装 Claude Code 插件 ${id}"
+                else
+                    ms_warn "Claude Code 插件 ${id} 没装上（不影响其余功能，登录后可在 claude 里用 /plugin 补装）"
+                fi
+                ;;
+            *) ms_warn "Claude Code 插件 ${id} 来自这里不认识的插件市场，没有装" ;;
+        esac
+    done
+    cp "$keep" "$settings"
+}
+if [ -x "$CLAUDE_BIN" ]; then plugins_setup; fi
+
 rm -rf "$TMP_DIR"
 
-# ---------- 4. 收尾 ----------
+# ---------- 5. 收尾 ----------
 
 ms_log "Claude Code: $("$CLAUDE_BIN" --version 2>/dev/null || echo 运行不了)"
 ms_log "Codex: $(codex --version 2>/dev/null || echo 运行不了)"
