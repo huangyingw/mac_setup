@@ -7,7 +7,7 @@
 
 ## 1. `~/loadrc` 从哪来、取哪些子模块
 
-**2026-11-13 起直接克隆 `huangyingw/loadrc` 本身**（用户定：不要快照仓库，loadrc 清理历史后和其它仓库一样临时公开，
+**2026-11-13 起直接克隆 `huangyingw/loadrc` 本身**（用户定：不要快照仓库，loadrc 和其它仓库一样 onsite 时临时公开；它的历史清不清、怎么清待用户同意，
 见 `AGENTS.md` 第 5 节）。原先的快照 `huangyingw/loadrc-snapshot` 与白名单 `snapshots/loadrc.include` 随之下线。
 
 - 克隆 `integration` 分支（参考机 `~/loadrc` 跟踪的就是它），只取最新一层（`--depth 1`），约 120 MB；
