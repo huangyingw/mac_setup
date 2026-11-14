@@ -53,6 +53,11 @@
 | Claude Code | 配置在 `~/.claude`，即 GitHub `huangyingw/claude-config`（私有） |
 | Codex | 配置在 `~/.codex`，即 GitHub `huangyingw/codex-config`（私有） |
 | Chrome | `/Applications/Google Chrome.app` |
+| tmux | Homebrew `tmux` 3.8；agent 会话都跑在 tmux 里（`20-loadrc` 装） |
+| python | Homebrew `python@3.15` 3.15.2；`clauderc` 的脚本用，系统自带的 `python3` 在干净系统上只是占位程序（`20-loadrc` 装） |
+| gh | Homebrew `gh` 2.103.3；全局 git 配置把 GitHub 凭证交给它，登录是人工事项（`20-loadrc` 装） |
+| git-lfs | **参考机没装**；全局 git 配置把它设成了必需，不装的话检出带 LFS 文件的仓库会报错，所以目标机上装（用户 2026-11-13 定；`20-loadrc` 装） |
+| 定时巡查 | 参考机 crontab 里 `clauderc/cc.cron` 那一套；目标机上往当前用户的 crontab 追加带标记的一块（11 条：交接卡住自动重发、会话卡在登录或选择框时处理、清孤儿进程等），对方原有条目保留，卸载只摘这一块（`20-loadrc` 装） |
 
 各项的补充要求（用户 2026-11-13 定）：
 
