@@ -60,7 +60,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/huangyingw/mac_setup/int
 - `local/publish.sh`：先对每个仓库做密钥检查（gitleaks 查内容 + 一份敏感文件名单查名字），**全部通过才改**。
 - `local/unpublish.sh`：不接受参数，总是把整份清单改回 private 并逐个核对，退出码反映是否全部确认。不依赖任何本地状态文件，状态丢了也不会漏。
 
-## 4. loadrc 走快照，不公开原仓库
+## 4. loadrc 走快照，不公开原仓库（2026-11-13 已被 4.1 取代，下面是当时的做法）
 
 用户原先的设想是把 `loadrc` 直接改成 public。公开前的密钥检查（2026-11-13）没有通过，而且问题在提交历史里——公开仓库等于公开全部历史，改回私有也收不回。因此：
 
@@ -87,6 +87,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/huangyingw/mac_setup/int
 - **硬伤 1：清历史不等于没泄露**。推上过 GitHub 的东西，改写后旧提交仍可能经提交号访问，PR 引用、缓存要找 GitHub 支持才清得掉。所以前提是**命中的密钥全部作废换新**；换新之后旧值泄露就无所谓了；
 - **硬伤 2：GitHub 不支持自定义服务端 hook**（pre-receive 只有自建的 GitHub Enterprise Server 有）。能拦的只有各机器本地的 pre-push hook，得每台机器、每个检出都装上；改写当天还要先停掉 repos_sync，每台机器的每个 worktree 都重新克隆，否则任何一次 `git pull` + `git push` 都会把旧历史合回去；
 - loadrc 用到的**私有子模块**仍拉不到：改写只解决 loadrc 本身，那些子模块还得各自检查后公开，或者继续并进来；
+- **落地情况**（2026-11-13）：`20-loadrc` 已改为直接克隆（见 `loadrc-module.md` 第 1 节）；`repos.txt` 去掉 `loadrc-snapshot`，登记 `huangyingw/loadrc` 与它的子模块 `huangyingw/neovim`（nvim 配置）；`snapshots/loadrc.*` 删除；`NEVER_PUBLIC` 去掉 loadrc，改由密钥检查把关。`snapshot.sh` 先留着，`voice_input` 还在用。GitHub 上的 `huangyingw/loadrc-snapshot` 仓库没删（删仓库要用户点头）；
+- **已核实的误报**：`neovim` 是上游 neovim 的分叉，历史里有上游测试数据被 gitleaks 当成密钥。核实提交确实在上游公开仓库里之后，按指纹逐条记进 `local/gitleaksignore` 放行，只对那个提交里的那一处生效；
 - **另一条路（供比较）**：不公开任何仓库，目标机上临时授权只读访问（如有效期一天、只读、限定仓库的 fine-grained token），卸载时清掉并作废。这样快照、公开 / 改回私有、公开前的密钥检查都不需要了。代价是要在对方机器上输入一次凭证。
 
 ## 5. 分支按域切

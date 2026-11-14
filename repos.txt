@@ -7,10 +7,13 @@
 #   snapshot  原仓库不公开。第三列 = 快照名：按 snapshots/<名>.conf 和 snapshots/<名>.include
 #             从原仓库导出「只含需要的文件、不带历史」的快照，推到这个仓库，再公开它。
 #
-# 🚫 huangyingw/loadrc 本身永远不能写进来（提交历史没通过密钥检查），只能走 snapshot。
+# huangyingw/loadrc：用户 2026-11-13 定为清理历史后直接公开（不再走快照）。清理完成之前它的密钥检查过不了，
+# 不带参数的 publish.sh 会整批失败——这期间测别的仓库就点名：local/publish.sh <仓库>...
+# huangyingw/neovim：loadrc 的子模块，nvim 的配置在里面；历史里的命中都是上游 neovim 的误报（见 local/gitleaksignore）。
 
 huangyingw/mac_setup        direct    .
 huangyingw/claude-config    direct    ~/.claude
 huangyingw/codex-config     direct    ~/.codex
-huangyingw/loadrc-snapshot  snapshot  loadrc
+huangyingw/loadrc           direct    ~/loadrc
+huangyingw/neovim           direct    ~/loadrc/neovim
 huangyingw/voice_input-snapshot  snapshot  voice_input

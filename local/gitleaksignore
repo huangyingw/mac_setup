@@ -1,0 +1,18 @@
+# 公开前密钥检查（local/lib.sh 的 scan_history）里已逐条核实为误报、放行的命中。
+# 每行一个 gitleaks 指纹「提交:文件:规则:行号」，只对那一个提交里的那一处生效，
+# 别的提交、别的文件再出现同样的东西照样会被拦。指纹里没有命中的内容本身。
+#
+# 只有能证明不是我们泄露的才能加进来，并在上面写明依据。加之前先核实，不要为了让检查过而加。
+
+# huangyingw/neovim：这几个提交都在上游公开仓库 neovim/neovim 里（2026-11-13 经 GitHub API 逐个核对），
+# 命中的是上游的键盘映射表、filetype 测试数据和帮助页生成脚本，不是密钥。
+3913ebbfcde7d327dd6f1d85e30ce114a9e8193e:scripts/gen_help_html.lua:generic-api-key:841
+f1590717acbfb33b0192d46b0e89e9d099ac0b16:test/functional/lua/filetype_spec.lua:generic-api-key:426
+b084f49496c91f8f16dced5850774221921c1667:src/nvim/testdir/test_filetype.vim:generic-api-key:357
+9baf60c6170489d3e7ba159d6391f88fed15b9a9:src/nvim/testdir/test_filetype.vim:generic-api-key:317
+a98a6996c291b3e300d27b791eded9eed333d677:runtime/keymap/croatian_cp1250.vim:generic-api-key:8
+a98a6996c291b3e300d27b791eded9eed333d677:runtime/keymap/croatian_utf-8.vim:generic-api-key:8
+a98a6996c291b3e300d27b791eded9eed333d677:runtime/keymap/serbian_cp1250.vim:generic-api-key:9
+a98a6996c291b3e300d27b791eded9eed333d677:runtime/keymap/serbian_utf-8.vim:generic-api-key:9
+a98a6996c291b3e300d27b791eded9eed333d677:runtime/keymap/serbian_cp1251.vim:generic-api-key:10
+a98a6996c291b3e300d27b791eded9eed333d677:runtime/keymap/serbian-latin_utf-8.vim:generic-api-key:9

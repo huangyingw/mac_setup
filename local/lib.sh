@@ -2,8 +2,10 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPOS_FILE="$ROOT/repos.txt"
 
-# 这几个仓库无论清单怎么写都拒绝公开
-NEVER_PUBLIC="huangyingw/loadrc huangyingw/ssh huangyingw/keys"
+# 这几个仓库无论清单怎么写都拒绝公开。
+# （huangyingw/loadrc 2026-11-13 起不在这里：用户定为清理历史后直接公开，由下面的密钥检查把关，
+#   清理完成之前检查过不了，照样公开不了。）
+NEVER_PUBLIC="huangyingw/ssh huangyingw/keys"
 
 # 光看文件名就不该出现在公开仓库里的东西（gitleaks 按内容查，这里按名字补一道）
 SENSITIVE_NAMES='(^|/)(id_(rsa|dsa|ecdsa|ed25519)|ssh_host_[a-z0-9]+_key|identity\.secret|\.env|\.credentials\.json|auth\.json|[^/]*\.(pem|p12|pfx|keystore))$'
@@ -37,14 +39,17 @@ guard_slug() {
 
 snapshot_workdir() { printf '%s\n' "$HOME/.cache/mac_setup/snapshots/$1"; }
 
-# scan_history <本地检出>：先与 GitHub 对齐，再扫描 GitHub 上有的全部历史（内容 + 文件名）
+# scan_history <本地检出>：先与 GitHub 对齐，再扫描 GitHub 上有的全部历史（内容 + 文件名）。
+# 已核实的误报按提交逐条放行，见 local/gitleaksignore。
 scan_history() {
     local path="$1" names
-    git -C "$path" fetch --quiet --tags origin || die "$path: git fetch 失败"
+    # --force：上游会挪动的标签（如 neovim 的 nightly）本地旧了会挡住 fetch；检查以 GitHub 上的为准
+    git -C "$path" fetch --quiet --tags --force origin || die "$path: git fetch 失败"
     if [ -z "$(git -C "$path" for-each-ref refs/remotes/origin | head -1)" ]; then
         info "  （远程还没有任何提交，跳过）"; return 0
     fi
     gitleaks git "$path" --log-opts="--remotes=origin --tags" --redact --no-banner --log-level warn \
+        --gitleaks-ignore-path "$ROOT/local/gitleaksignore" \
         || { warn "$path: 提交历史里发现疑似密钥（上面是 gitleaks 的输出）"; return 1; }
     names="$(git -C "$path" log --remotes=origin --tags --name-only --format= | sort -u | grep -E "$SENSITIVE_NAMES" || true)"
     if [ -n "$names" ]; then
