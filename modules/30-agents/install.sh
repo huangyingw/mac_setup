@@ -25,16 +25,6 @@ ms_git() {
     GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.hooksPath=/dev/null "$@" </dev/null
 }
 
-# claim_new_dir <目录>...：目录原来没有 → 建出来并记为我们的（卸载时整个删掉）；原来就有 → 不动、不记账
-claim_new_dir() {
-    local d
-    for d in "$@"; do
-        [ -e "$d" ] && continue
-        ms_record path "$d"
-        mkdir -p "$d"
-    done
-}
-
 # config_repo <仓库名> <落点>：把配置仓库检出到落点。先拉到临时目录，成功了才动对方原有的东西。
 config_repo() {
     local slug="$1" dest="$2" tmp="$TMP_DIR/$1"
@@ -131,7 +121,8 @@ if [ -e "$CLAUDE_BIN" ] && ! ms_recorded path "$CLAUDE_BIN"; then
     ms_log "Claude Code 原来就有（${CLAUDE_BIN}），不动"
 elif [ ! -x "$CLAUDE_BIN" ]; then
     ms_log "安装 Claude Code（官方安装器）"
-    claim_new_dir "$HOME/.local" "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.local/state" "$HOME/.cache"
+    # 共用的上级目录：原来没有才建、才记账，恢复原状时空了才删（别人后放进去的东西不碰）
+    ms_claim_dir "$HOME/.local/bin" "$HOME/.local/share" "$HOME/.local/state" "$HOME/.cache"
     ms_claim "$CLAUDE_BIN"
     ms_claim "$HOME/.local/share/claude"
     ms_claim "$HOME/.local/state/claude"
@@ -153,11 +144,17 @@ else
     ms_cask codex </dev/null || ms_die "Codex 安装失败"
 fi
 
-# 两个工具接 Chrome 扩展时，会各往 Chrome 的目录里写一份「本机消息」清单；Codex 还会在 ~/.cache 下放运行时。
-# 这些都在配置目录之外，先记上（对方原有的会先备份）。
-NMH_DIR="$HOME/Library/Application Support/Google/Chrome/NativeMessagingHosts"
-ms_claim "$NMH_DIR/com.anthropic.claude_code_browser_extension.json"
-ms_claim "$NMH_DIR/com.openai.codexextension.json"
+# 两个工具接浏览器扩展时，会往一串 Chromium 系浏览器的数据目录里各写一份「本机消息」清单——不管那个浏览器
+# 装没装（参考机上没装的 Arc、Vivaldi、Opera 等都被建出了只放这份清单的目录）。Codex 还会在 ~/.cache 下放运行时。
+# 这些都在配置目录之外：清单文件记为我们的（对方原有的先备份），浏览器数据目录按共用目录记（空了才删）。
+for b in "Google/Chrome" "Google/Chrome for Testing" "Google/ChromeForTesting" "Chromium" \
+         "BraveSoftware/Brave-Browser" "Arc/User Data" "Microsoft Edge" "Vivaldi" "com.operasoftware.Opera"; do
+    nmh="$HOME/Library/Application Support/$b/NativeMessagingHosts"
+    ms_claim_dir "$nmh"
+    ms_claim "$nmh/com.anthropic.claude_code_browser_extension.json"
+    ms_claim "$nmh/com.openai.codexextension.json"
+done
+ms_claim_dir "$HOME/.cache"
 ms_claim "$HOME/.cache/codex-runtimes"
 
 # ---------- 4. Claude Code 插件 ----------

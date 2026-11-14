@@ -1,7 +1,7 @@
 #!/bin/bash
 # loadrc 的清理里「清单管不到」的部分：定时任务、还在跑的进程、iTerm2 的设置和守护进程、gh 的登录。
 # 文件、目录和软链接（~/loadrc、~/.zshrc、~/.tmux.conf、~/.config/nvim 等）已记在清单里，
-# 由 uninstall.sh 统一删除 / 放回。
+# 由 uninstall.sh 统一删除 / 放回；共用的上级目录（newdir）也由它处理（空了才删）。
 # 每一步都先看清单：不是本次安装记下的，一律不碰（演练机上几个分支各用各的清单）。
 set -uo pipefail
 . "$MS_SRC/lib/common.sh"
@@ -16,7 +16,7 @@ ms_extra() {
     awk -F'\t' -v t="$1" -v v="$2" '$1==t && $2==v {print $3}' "$MS_MANIFEST" | head -1
 }
 
-# 在参考机上用假的 HOME 试跑（安装时带了 MS_LOADRC_SANDBOX=1）：下面几样都不在 $HOME 里，
+# 在参考机上用假的 HOME 试跑（安装时带了 MS_LOADRC_SANDBOX=1）：下面 1–5 步都不在 $HOME 里，
 # 安装时没碰，这里也不能碰——尤其钥匙串，删的会是参考机自己的登录。
 [ -z "${MS_LOADRC_SANDBOX:-}" ] || exit 0
 
@@ -35,9 +35,15 @@ if ms_recorded crontab user; then
     fi
 fi
 
-# 2. iTerm2：停掉守护进程，把设置恢复成安装前的样子
+# 2. iTerm2：停掉守护进程，把设置恢复成安装前的样子。
+#    守护进程按名字注销，不靠配置文件：配置文件可能已经不在了，而它是「退出就重新拉起」的，
+#    留着会把我们刚删掉的东西（它的 python 环境、日志）重新建出来。
+ITERM_LABEL="com.huangyingw.iterm2-bell-daemon"
 if ms_recorded path "$ITERM_PLIST"; then
     launchctl unload "$ITERM_PLIST" 2>/dev/null
+    launchctl bootout "gui/$(id -u)/$ITERM_LABEL" 2>/dev/null
+    launchctl remove "$ITERM_LABEL" 2>/dev/null
+    pkill -f "$HOME/loadrc/iterm2rc/iterm2-bell-daemon.py" 2>/dev/null
 fi
 case "$(ms_extra defaults "$ITERM_DOMAIN")" in
     saved)
@@ -52,7 +58,10 @@ case "$(ms_extra defaults "$ITERM_DOMAIN")" in
         fi
         ;;
     none)
+        # 原来没有任何设置：清空后把设置文件本身也删掉（先让系统的设置缓存放手，否则它会再写出来）
         defaults delete "$ITERM_DOMAIN" 2>/dev/null
+        killall -u "$(id -un)" cfprefsd 2>/dev/null
+        rm -f "$HOME/Library/Preferences/$ITERM_DOMAIN.plist"
         ;;
 esac
 
@@ -65,6 +74,8 @@ if ms_recorded path "$HOME/loadrc"; then
             ms_warn "卸载是在 tmux 里跑的，没有停 tmux：跑完后请关掉这个终端窗口"
         else
             tmux kill-server 2>/dev/null
+            # tmux 放 socket 的目录（tmux 是我们装的 → 这个目录也是我们用出来的）
+            rm -rf "/private/tmp/tmux-$(id -u)"
         fi
     fi
     ancestors=" "
@@ -79,17 +90,24 @@ if ms_recorded path "$HOME/loadrc"; then
     done
 fi
 
-# 4. 巡查、hook、守护进程写在 /tmp 下的日志和状态：清单只管家目录等位置，这里按名字清。
-#    只删属于当前用户的；名字都是这套工具专用的前缀，不会撞上别的程序。
+# 4. 巡查、hook、守护进程写在 /tmp 下的日志、锁和状态：清单只管家目录等位置，这里按名字清。
+#    只删属于当前用户的；名字都是这套工具专用的。漏掉的不要紧，/tmp 重启后系统自己会清。
 if ms_recorded path "$HOME/loadrc"; then
     find /private/tmp -maxdepth 1 -user "$(id -un)" \( \
         -name 'login-watchdog*' -o -name 'model-watchdog*' -o -name 'safeguard-watchdog*' \
-        -o -name 'rc-watchdog*' -o -name 'handoff-watchdog.log' -o -name 'handoff-sw-*' \
-        -o -name 'agent_orphan_watchdog.log' -o -name 'agent_reopen_*' -o -name 'worktree-gc.log' \
-        -o -name 'notify-attention.log' -o -name 'model-autoswitch*' -o -name '.model_switch_lease_*' \
-        -o -name '.claude_model_*' -o -name 'switch-model-locks' -o -name 'project_desk_seen*' \
-        -o -name 'resume-detector-mismatch.seen' -o -name 'iterm2-bell-daemon*' \
+        -o -name 'rc-watchdog*' -o -name 'handoff-*' -o -name '.handoff-deliver-*' \
+        -o -name '.claude-handoff-*' -o -name '.claude-statusline-*' -o -name '.claude_model_*' \
+        -o -name '.cc-model-catalog.json' -o -name '.model_switch_lease_*' -o -name 'switch-model-locks' \
+        -o -name 'model-autoswitch*' -o -name 'model-switch-gate*' -o -name 'auto-compact-guard.log' \
+        -o -name 'agent_*' -o -name 'project_desk_*' -o -name 'browser_ops_guard*' \
+        -o -name 'cc-initial-prompt*' -o -name 'cc-socks*' -o -name 'cpm-pane-init-locks' \
+        -o -name 'codex_notes*' -o -name 'codex_usage.lock' \
+        -o -name 'notify-attention.log' -o -name 'osc52-broadcast.*' -o -name 'resurrect-*' \
+        -o -name 'resume-detector-mismatch.seen' -o -name 'tmux-cleanup-dup-panes.log' \
+        -o -name 'worktree-gc.log' -o -name 'iterm2-bell-daemon*' \
         \) -exec rm -rf {} + 2>/dev/null
+    # gh 放在 /tmp 下的缓存：gh 是我们装的才清
+    ! ms_recorded formula gh || rm -rf /private/tmp/gh-cli-cache
 fi
 
 # 5. gh 的登录：安装时对方没有在用 gh → 钥匙串里现在有的是我登录留下的，删掉
@@ -100,4 +118,5 @@ if [ "$(ms_extra keychain "gh:github.com")" = ours ]; then
     done
     [ "$n" -eq 0 ] || ms_log "已清掉钥匙串里 gh 的登录"
 fi
+
 exit 0

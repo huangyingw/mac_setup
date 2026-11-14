@@ -8,6 +8,10 @@
 #     formula  我们装的 Homebrew formula      cask  我们装的 Homebrew cask
 #     brew     Homebrew 本身是我们装的        clt   Xcode 命令行工具是我们装的
 #     brewhome Homebrew 的用户配置目录（默认 ~/.homebrew）原来没有（卸载时在最后一条 brew 命令之后删）
+#     brewcache 我们下载到 Homebrew 缓存里的安装包（Homebrew 原来就有时才记；卸载软件之后删）
+#     newdir   我们建出来的「共用上级目录」（~/.local、~/.config 之类；卸载时只在空了才删）
+#     brewetc  brew install 时（含连带装的依赖）在 Homebrew 的 etc 下新冒出来的条目
+#              （Homebrew 原来就有时才记；卸载时已经没有还装着的 formula 提供它才删）
 #   原来就有的软件和配置不记账，卸载时不会碰。
 
 MS_HOME="${MS_HOME:-$HOME/.mac_setup}"
@@ -56,6 +60,34 @@ ms_backup() {
 ms_claim() {
     ms_backup "$1"
     ms_record path "$1"
+}
+
+# ms_claim_dir <目录>...：需要一个「大家共用的上级目录」（~/.local、~/.local/share、~/.config、
+# ~/.cache、~/Library/LaunchAgents 之类）时调用。原来没有 → 建出来并记一笔 newdir（中间缺的
+# 各级也各记一笔）；原来就有 → 不动、不记账。
+# 不要用 ms_claim / 记成 path：path 在恢复原状时是整个删掉的，会连带删掉安装之后别的程序
+# （或别的状态目录）放进去的东西。newdir 由 uninstall.sh 统一处理：只在目录已经空了才删。
+# 放进这些目录里的、属于我们的东西，照常各自 ms_claim / ms_own_if_absent。
+ms_claim_dir() {
+    local d p
+    for d in "$@"; do
+        p="$d"
+        while [ ! -e "$p" ] && [ ! -L "$p" ] && [ "$p" != "$HOME" ] && [ "$p" != / ]; do
+            ms_record newdir "$p"
+            p="$(dirname "$p")"
+        done
+        [ -d "$d" ] || mkdir -p "$d"
+    done
+}
+
+# ms_own_if_absent <路径>...：路径原来没有 → 记为我们的（不创建）；原来就有 → 不动、不记账。
+# 用在「我们装的工具运行时会自己往里写」的位置上（缓存、状态文件等），这样恢复原状时能一并删掉，
+# 共用的上级目录才空得下来。
+ms_own_if_absent() {
+    local p
+    for p in "$@"; do
+        [ -e "$p" ] || [ -L "$p" ] || ms_record path "$p"
+    done
 }
 
 # ms_todo <一句话>：登记一条必须人工做的事（登录、授权等），install.sh 结束时统一列出
@@ -111,16 +143,126 @@ ms_brew_ensure() {
     ms_brew_load || ms_die "Homebrew 装完后找不到 brew"
 }
 
+# Homebrew 的下载缓存：brew install 把安装包（连同依赖的）下载到缓存目录，brew uninstall（含 --zap）不清它。
+# Homebrew 是我们装的 → 卸载时整个缓存目录一起没，不用管；它原来就有时，我们下载的安装包要自己清。
+# 做法：每次 brew install 前后各列一遍缓存，多出来的条目记账（brewcache），卸载时按清单删。
+# 不按软件名去匹配：依赖的安装包叫什么事先不知道，而且对方原来就缓存着的同名安装包不该删。
+
+# ms_brew_cache_list：列出缓存里的安装包条目，每行一个绝对路径
+# （顶层和 Cask/ 下的链接、downloads/ 下的文件；brew 自己运转用的数据如 api/、bootsnap/ 不算）
+ms_brew_cache_list() {
+    local c
+    c="$(brew --cache 2>/dev/null)" || return 0
+    if [ -z "$c" ] || [ ! -d "$c" ]; then return 0; fi
+    {
+        find "$c" -mindepth 1 -maxdepth 1 -type l 2>/dev/null || true
+        if [ -d "$c/Cask" ]; then find "$c/Cask" -mindepth 1 -maxdepth 1 -type l 2>/dev/null || true; fi
+        if [ -d "$c/downloads" ]; then find "$c/downloads" -mindepth 1 -maxdepth 1 -type f 2>/dev/null || true; fi
+    } | LC_ALL=C sort
+}
+
 # brew install 会读标准输入：调用方的标准输入里若还排着后续命令（一次送多条命令、粘贴多行），
 # 会被它全部读走——安装成功，后面的命令却一条不执行、也不报错。所以一律接 /dev/null。
 # （需要 sudo 密码时 sudo 自己从终端读，不走标准输入。）
+
+# Homebrew 的 etc：有的 formula（多半是连带装上的依赖，如 openssl、ca-certificates）会往
+# $(brew --prefix)/etc 放配置文件，brew uninstall 不删（只打一行警告）。处理办法同缓存：装之前和
+# 装之后各列一遍 etc 的顶层条目，新冒出来的记为 brewetc。
+
+# ms_brew_etc_list：列出 Homebrew 的 etc 下的顶层条目，每行一个绝对路径
+ms_brew_etc_list() {
+    local prefix
+    prefix="$(brew --prefix 2>/dev/null)" || return 0
+    case "$prefix" in /?*) ;; *) return 0 ;; esac
+    [ -d "$prefix/etc" ] || return 0
+    find "$prefix/etc" -mindepth 1 -maxdepth 1 2>/dev/null | LC_ALL=C sort
+}
+
+# 同一台机器上，各个 mac_setup 进程的 brew 安装 / 卸载一次只跑一个。
+# 真实场景只有一个安装在跑，用不上；演练机上几个分支（各用一个状态目录）同时跑时：
+#   - 前后两次列缓存 / etc 之间，别人下载的东西会被记进自己的清单，恢复原状时被删掉；
+#   - brew 自己的锁冲突（"has already locked ..."），安装直接失败。
+# 用 mkdir 当锁（原子操作），里面写持有者的进程号；持有者已经不在了（被打断）就接手。
+MS_BREW_LOCK="${MS_BREW_LOCK:-/tmp/mac_setup-brew.lock}"
+ms_brew_lock() {
+    local waited=0 pid
+    while ! mkdir "$MS_BREW_LOCK" 2>/dev/null; do
+        pid="$(cat "$MS_BREW_LOCK/pid" 2>/dev/null || true)"
+        if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+            rm -f "$MS_BREW_LOCK/pid"; rmdir "$MS_BREW_LOCK" 2>/dev/null || true
+            continue
+        fi
+        if [ $((waited % 60)) = 0 ]; then ms_log "等这台机器上另一个 mac_setup 的 brew 跑完（进程 ${pid:-?}）..."; fi
+        sleep 2; waited=$((waited + 2))
+        if [ "$waited" -ge 1800 ]; then ms_warn "等了 30 分钟还没轮到，不等了"; return 0; fi
+    done
+    echo $$ > "$MS_BREW_LOCK/pid"
+}
+ms_brew_unlock() {
+    if [ "$(cat "$MS_BREW_LOCK/pid" 2>/dev/null)" = "$$" ]; then
+        rm -f "$MS_BREW_LOCK/pid"; rmdir "$MS_BREW_LOCK" 2>/dev/null || true
+    fi
+}
+
+# ms_brew_install <brew install 的参数...>：跑 brew install，并把它新下载进缓存的安装包、
+# 新放进 etc 的配置记账。安装失败也记：下到一半的东西同样是我们带来的。
+ms_brew_install() {
+    local before="" before_etc="" rc=0 f
+    ms_brew_lock
+    if ! ms_recorded brew /opt/homebrew && ! ms_recorded brew /usr/local; then
+        before="$(mktemp "$MS_HOME/brewcache.XXXXXX" 2>/dev/null)" || before=""
+        if [ -n "$before" ]; then ms_brew_cache_list > "$before"; fi
+        before_etc="$(mktemp "$MS_HOME/brewetc.XXXXXX" 2>/dev/null)" || before_etc=""
+        if [ -n "$before_etc" ]; then ms_brew_etc_list > "$before_etc"; fi
+    fi
+    brew install "$@" </dev/null || rc=$?
+    if [ -n "$before" ]; then
+        ms_brew_cache_list | LC_ALL=C comm -13 "$before" - | while IFS= read -r f; do
+            ms_record brewcache "$f"
+        done
+        rm -f "$before"
+    fi
+    if [ -n "$before_etc" ]; then
+        ms_brew_etc_list | LC_ALL=C comm -13 "$before_etc" - | while IFS= read -r f; do
+            ms_record brewetc "$f"
+        done
+        rm -f "$before_etc"
+    fi
+    ms_brew_unlock
+    return "$rc"
+}
+
+# ms_brew_etc_cleanup：处理清单里的 brewetc（卸完我们装的软件之后调用）。
+# 还装着的某个 formula 也提供同名条目（它的 keg 里 .bottle/etc 下有）→ 保留，那是对方在用的；否则删。
+ms_brew_etc_cleanup() {
+    local cellar p name k keep
+    cellar="$(brew --cellar 2>/dev/null)" || cellar=""
+    case "$cellar" in /?*) ;; *) cellar="" ;; esac
+    awk -F'\t' '$1=="brewetc"{print $2}' "$MS_MANIFEST" | while IFS= read -r p; do
+        if [ ! -e "$p" ] && [ ! -L "$p" ]; then continue; fi
+        name="$(basename "$p")"
+        keep=""
+        if [ -n "$cellar" ]; then
+            for k in "$cellar"/*/*/.bottle/etc/"$name"; do
+                if [ -e "$k" ] || [ -L "$k" ]; then keep="$k"; break; fi
+            done
+        fi
+        if [ -n "$keep" ]; then
+            keep="${keep#"$cellar"/}"
+            ms_log "保留 ${p}：还装着的 ${keep%%/*} 也用它"
+            continue
+        fi
+        ms_log "删除 ${p}（我们装的 formula 留下的配置）"
+        ms_remove_path "$p"
+    done
+}
 
 # ms_formula <formula>：原来就装了 → 不动、不记账
 ms_formula() {
     ms_brew_ensure
     if brew list --formula "$1" >/dev/null 2>&1; then return 0; fi
     ms_log "brew install $1"
-    brew install "$1" </dev/null || return 1
+    ms_brew_install "$1" || return 1
     ms_record formula "$1"
 }
 
@@ -133,7 +275,7 @@ ms_cask() {
         return 0
     fi
     ms_log "brew install --cask $1"
-    brew install --cask "$1" </dev/null || return 1
+    ms_brew_install --cask "$1" || return 1
     ms_record cask "$1"
 }
 
@@ -149,4 +291,44 @@ ms_remove_path() {
     esac
     [ -e "$p" ] || [ -L "$p" ] || return 0
     rm -rf -- "$p" 2>/dev/null || sudo rm -rf -- "$p"
+}
+
+# ms_remove_cached <绝对路径>：删一个记为我们下载的缓存条目。只删文件和链接，不删目录。
+ms_remove_cached() {
+    local p="$1"
+    case "$p" in
+        ""|[!/]*|*..*) ms_warn "拒绝删除（不是正常的绝对路径）: $p"; return 0 ;;
+    esac
+    if [ -L "$p" ] || [ -f "$p" ]; then rm -f -- "$p"; fi
+}
+
+# ms_is_shared_dir <绝对路径>：是不是众所周知的共用上级目录。
+# 保险用：这些目录即使被记成了 path，恢复原状时也只按「空了才删」处理，绝不整个删。
+ms_is_shared_dir() {
+    case "$1" in
+        "$HOME/.local"|"$HOME/.local/bin"|"$HOME/.local/share"|"$HOME/.local/state"|"$HOME/.local/lib") return 0 ;;
+        "$HOME/.config"|"$HOME/.cache"|"$HOME/bin") return 0 ;;
+        "$HOME/Library"|"$HOME/Library/LaunchAgents"|"$HOME/Library/Application Support") return 0 ;;
+        "$HOME/Library/Preferences"|"$HOME/Library/Caches"|"$HOME/Library/Logs") return 0 ;;
+    esac
+    return 1
+}
+
+# ms_remove_dir_if_empty <绝对路径>：只在目录已经空了的时候才删（Finder 的 .DS_Store 不算东西）；
+# 里面还有东西 → 保留，并说出还剩什么，由人判断。
+ms_remove_dir_if_empty() {
+    local d="$1" left
+    case "$d" in
+        *..*) ms_warn "拒绝删除（路径含 ..）: $d"; return 0 ;;
+        "$HOME"/?*) ;;
+        *) ms_warn "拒绝删除（不在家目录下）: $d"; return 0 ;;
+    esac
+    if [ -L "$d" ] || [ ! -d "$d" ]; then return 0; fi
+    rm -f "$d/.DS_Store"
+    if rmdir "$d" 2>/dev/null; then
+        ms_log "删除 ${d}（已空）"
+        return 0
+    fi
+    left="$(ls -A "$d" 2>/dev/null | head -5 | tr '\n' ' ')"
+    ms_warn "保留 ${d}：是我们建的，但里面还有没记过账的东西（${left% }）"
 }

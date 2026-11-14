@@ -1,7 +1,7 @@
 #!/bin/bash
 # 语音输入的清理里「清单管不到」的部分：停掉转写服务和 Spokenly、收回系统授权、清掉钥匙串里的记录。
 # 文件和目录（应用设置、听写历史、转写服务目录、launchd 配置）已记在清单里，由 uninstall.sh 统一删除 / 放回；
-# Spokenly 本体和 uv 由 uninstall.sh 按清单卸载。
+# Spokenly 本体和 uv 由 uninstall.sh 按清单卸载；共用的上级目录（newdir）也由它统一处理。
 set -uo pipefail
 . "$MS_SRC/lib/common.sh"
 
@@ -26,7 +26,7 @@ if ms_recorded path "$AGENT"; then
 fi
 
 # 2. 退出 Spokenly：它开着的话会把内存里的设置写回去，盖掉放回去的原有设置
-if pgrep -x Spokenly >/dev/null 2>&1; then
+if ms_recorded path "$PREFS" && pgrep -x Spokenly >/dev/null 2>&1; then
     pkill -x Spokenly 2>/dev/null
     i=0
     while pgrep -x Spokenly >/dev/null 2>&1 && [ "$i" -lt 15 ]; do sleep 1; i=$((i + 1)); done
@@ -47,25 +47,6 @@ if ms_recorded keychain "$KEYCHAIN_SVC"; then
     [ "$n" -eq 0 ] || ms_log "已清掉钥匙串里 Spokenly 的记录"
 fi
 
-# 5. Homebrew 下载缓存里我们装的那两样的安装包。
-#    Homebrew 是我们装的会整个卸掉、连缓存一起没；它原来就有时卸载软件不清缓存，这里补上。
-ms_brew_load 2>/dev/null || true
-cache="$(brew --cache 2>/dev/null || true)"
-# drop_cached <缓存里的链接>...：删掉链接和它指向的安装包
-drop_cached() {
-    local f t
-    for f in "$@"; do
-        [ -L "$f" ] || continue
-        t="$(readlink "$f")"
-        case "$t" in /*) ;; *) t="$(dirname "$f")/$t" ;; esac
-        rm -f "$t" "$f"
-    done
-}
-if [ -n "$cache" ] && [ -d "$cache" ]; then
-    if ms_recorded cask spokenly; then drop_cached "$cache"/Cask/spokenly--*; fi
-    if ms_recorded formula uv; then drop_cached "$cache"/uv--* "$cache"/uv_bottle_manifest--*; fi
-fi
-
-# 6. 让系统的设置缓存重新读盘：接下来设置文件会被直接删掉 / 放回
-killall -u "$(id -un)" cfprefsd 2>/dev/null
+# 5. 让系统的设置缓存重新读盘：接下来设置文件会被直接删掉 / 放回
+if ms_recorded path "$PREFS"; then killall -u "$(id -un)" cfprefsd 2>/dev/null; fi
 exit 0

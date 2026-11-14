@@ -20,12 +20,37 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/huangyingw/mac_setup/int
 - 我们创建的路径、装的 formula / cask、是否由我们装了 Homebrew 和 Xcode 命令行工具，各记一条；
 - 对方原来就有的软件不记账，卸载时不碰。
 
-`uninstall.sh` 的顺序：各模块自己的清理 → 删我们创建的路径 → 把备份放回 → 卸软件（Homebrew 是我们装的就整个卸掉）→ 删状态目录。
+`uninstall.sh` 的顺序：各模块自己的清理 → 删我们创建的路径 → 把备份放回 → 卸软件（Homebrew 是我们装的就整个卸掉；否则只卸我们装的，再清掉我们下载进缓存的安装包和放进 `etc` 的配置）→ 删已经空了的共用上级目录 → 删状态目录。
 
 **Homebrew 的用户配置目录单独记一类（`brewhome`）**（2026-11-13 补）。Homebrew 7.x 用到「信任记录」时会自己在家目录建 `~/.homebrew`（设了 `XDG_CONFIG_HOME` 则是 `$XDG_CONFIG_HOME/homebrew`），连 `brew uninstall` 都会碰它；官方卸载脚本只清缓存和日志，不清它。所以：
 
 - 第一次用 brew 之前这个目录不存在，就记一条——不管 Homebrew 是谁装的，也不管它此刻有没有被建出来（它可能到卸载阶段才出现）；机主原来就有的不记、不动；
 - 不能记成普通的 `path`：普通路径在卸软件之前删，而卸软件用的 brew 命令会把它再建出来。它在最后一条 brew 命令之后才删。
+
+**Homebrew 下载缓存里的安装包也记账（`brewcache`）**（2026-11-13 补）。`brew install` 把安装包（连同依赖的）下载到 `brew --cache`（`~/Library/Caches/Homebrew`），`brew uninstall`（含 `--cask --zap`）不清它。Homebrew 是我们装的时候整个卸掉、缓存一起没；**对方原来就有 Homebrew 时**，恢复原状后缓存里会留下我们装过的软件的安装包。所以：
+
+- 在框架层统一处理，不让各模块自己按名字清：`ms_formula` / `ms_cask` 都经 `ms_brew_install`，它在 `brew install` 前后各列一遍缓存，多出来的条目逐条记账；卸载时在卸软件之后按清单删；
+- 按「前后差」而不是按软件名匹配：依赖的安装包叫什么事先不知道（装一个 `tmux` 会带下 `libevent`、`ncurses` 等），而对方原来就缓存着的同名安装包不该删；
+- 只看安装包条目（缓存顶层和 `Cask/` 下的链接、`downloads/` 下的文件），`api/`、`bootsnap/` 这类 brew 自己运转用的数据不算；
+- Homebrew 是我们装的不记（整个卸掉就行）；安装失败也记（下到一半的同样是我们带来的）；
+- 已知不覆盖：`brew install` 偶尔顺带跑的自动清理可能删掉对方原有的旧安装包，那是缓存，丢了 brew 会重新下载，不还原。
+- **演练机上几个分支同时跑**（2026-11-13 补）：「前后差」记账会把同一时间别人下载的东西记进自己的清单，恢复原状时删掉；两边的 brew 还会撞上 brew 自己的锁、安装直接失败。真实场景只有一个安装在跑，不会出现；但演练机是共用的，所以框架的 `ms_brew_install` 和 `uninstall.sh` 卸软件那一步用一把机器级的锁（`ms_brew_lock`，`mkdir` 原子创建，记持有者进程号，持有者不在了就接手，最多等 30 分钟）排队。不经框架直接敲的 `brew` 命令不受管。回归测试：`bash tests/brew_lock.sh`。
+- 回归测试：`bash tests/brew_cache.sh`（在临时家目录里用假的 brew 跑）。
+
+**Homebrew 的 `etc` 下新冒出来的配置也记账（`brewetc`）**（2026-11-13 补，起因是 loadrc 分支在演练机上发现）。有的 formula（多半是连带装上的依赖，如 `openssl@4`、`ca-certificates`）会往 `$(brew --prefix)/etc` 放配置文件，`brew uninstall` 不删它们，只打一行 `configuration files have not been removed!` 警告。Homebrew 是我们装的会整个删掉；**对方原来就有 Homebrew 时**，这些文件会留下。所以：
+
+- 和缓存同一个办法：`ms_brew_install` 在 `brew install` 前后各列一遍 `etc` 的顶层条目，新冒出来的逐条记为 `brewetc`；原来就有的不记、不动（哪怕这次安装改了它的内容）；
+- 卸载时在卸完我们的软件之后处理：**还装着的某个 formula 也提供同名条目就保留**（看它 keg 里的 `.bottle/etc`；对应「我们带进来的依赖后来被对方的软件用上了，没被自动卸掉」），否则删；
+- Homebrew 是我们装的不记；`brew --prefix` 拿不到时什么都不记（不能退化成去比较 `/etc`）；
+- 回归测试：`bash tests/brew_etc.sh`。
+
+**共用的上级目录单独记一类（`newdir`），恢复原状时只在空了才删**（2026-11-13 补）。`~/.local`、`~/.local/share`、`~/.config`、`~/.cache`、`~/Library/LaunchAgents` 这类目录不属于任何一个程序，干净系统上常常不存在，谁先用到谁建。起因：最初各模块把自己建出来的这类目录记成 `path`，而 `path` 在恢复原状时是整个删掉的——演练机上一个分支的恢复原状因此删掉了另一个分支放在 `~/.local` 里的测试环境。真实场景只有一份清单，同样的情况是「安装之后、恢复原状之前，对方机器上别的程序往里放的东西被删」。结论（全仓库一致）：
+
+- 模块用 `ms_claim_dir` 建这类目录，记为 `newdir`（中间缺的各级也记）；原来就有的不记、不动；
+- `uninstall.sh` 在最后一步（属于我们的东西都删完之后）处理 `newdir`：从里层到外层，**空了才删**；不空就保留，并说出里面还剩什么，由人判断。多留一个空壳目录看得见、能补删；多删一份别人的数据收不回——和快照用白名单是同一个取舍；
+- 代价是我们装的工具运行时自己写出来的东西（缓存、状态文件）不会再被「整个删上级目录」顺带清掉，模块要用 `ms_own_if_absent` 把这些位置记上，上级目录才空得下来；
+- 保险：`~/.local`、`~/.config`、`~/.cache`、`~/Library` 及其几个固定子目录写死在 `ms_is_shared_dir` 里，即使被误记成 `path`，也只按「空了才删」处理；
+- 这件事由框架统一做，模块的 `uninstall.sh` 不各自处理 `newdir`。回归测试：`bash tests/shared_dirs.sh`（在临时家目录里跑）。
 
 备份只在「第一次遇到原件」时做。重跑安装时路径上已是我们的东西，不能再备份，否则会盖掉真正的原件。
 

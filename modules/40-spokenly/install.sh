@@ -37,16 +37,6 @@ $HOME/Library/WebKit/app.spokenly
 $HOME/Library/Saved Application State/app.spokenly.savedState
 "
 
-# claim_new_dir <目录>...：原来没有 → 建出来并记为我们的；原来就有 → 不动、不记账
-claim_new_dir() {
-    local d
-    for d in "$@"; do
-        [ -e "$d" ] && continue
-        ms_record path "$d"
-        mkdir -p "$d"
-    done
-}
-
 # 退出 Spokenly。不用 osascript：它要先过「自动化」授权弹窗，经 ssh 或没人点的时候会卡住。
 quit_spokenly() {
     local i=0
@@ -122,7 +112,8 @@ MODEL="$(tr -d '[:space:]' < "$SNAP/service/model.mbp")"
 
 ms_formula uv || ms_die "uv 安装失败"
 
-claim_new_dir "$HOME/.local" "$HOME/.local/share" "$HOME/Library/LaunchAgents"
+# 共用的上级目录：原来没有才建、才记账，恢复原状时由框架只在空了的时候才删
+ms_claim_dir "$HOME/.local/share" "$HOME/Library/LaunchAgents"
 ms_claim "$DEST"
 mkdir -p "$DEST/logs"
 
