@@ -1,12 +1,11 @@
 #!/bin/bash
 # NoMachine 的清理里「清单管不到」的部分：系统级的服务、驱动、系统用户、防火墙放行、系统授权。
-# 家目录里的文件（~/.nx、~/Documents/NoMachine、设置文件）已记在清单里，由 uninstall.sh 统一删除 / 放回；
-# 本模块跑完之后 uninstall.sh 还会按清单 brew uninstall --cask --zap 一次（那时已经没什么可删的了）。
+# 家目录里的文件（~/.nx、~/Documents/NoMachine、设置文件）已记在清单里，由 uninstall.sh 统一删除 / 放回。
+# NoMachine 不经 Homebrew 装（清单里记 nm-pkg），框架不会替我们卸，全在这里做。
 #
-# 为什么不只靠 brew uninstall：NoMachine 的官方卸载是「应用被删 → 守护进程 com.nomachine.uninstall 发现后
-# 跑 nxuninstall.sh」。brew 先把这个守护进程停掉再删应用，官方脚本就不会跑，系统用户 nx、/etc/NX、
-# /etc/pam.d/nx、音频驱动等会留下来。所以这里照官方流程自己跑一遍，再补上它在新系统上交给图形界面做的部分
-# （删系统用户——它会弹一个要输密码的「NoMachine Uninstall」窗口，没人点就一直挂着）。
+# NoMachine 的官方卸载是「应用被删 → 守护进程 com.nomachine.uninstall 发现后跑 nxuninstall.sh」，新系统上
+# 删系统用户那一步还交给一个要输密码的「NoMachine Uninstall」窗口（没人点就一直挂着）。
+# 这里照官方流程同步跑一遍官方脚本，再自己补上交给图形界面的那部分。
 set -uo pipefail
 . "$MS_SRC/lib/common.sh"
 
@@ -22,8 +21,11 @@ awk -F'\t' '$1=="fwapp"{print $2}' "$MS_MANIFEST" 2>/dev/null | while IFS= read 
     sudo "$FW" --remove "$p" >/dev/null 2>&1 && ms_log "已撤掉防火墙对 $p 的放行"
 done
 
+# 安装中途被打断时留下的挂载
+hdiutil detach -quiet "$MS_HOME/nomachine-mnt" 2>/dev/null
+
 # NoMachine 不是我们装的（或用别的状态目录、没装过本模块）→ 系统级的东西一概不碰
-ms_recorded cask nomachine || exit 0
+ms_recorded nm-pkg "$APP" || ms_recorded cask nomachine || exit 0
 
 uid="$(id -u)"
 
@@ -71,8 +73,11 @@ if defaults read "$LW" HiddenUsersList >/dev/null 2>&1; then
     fi
 fi
 
-# 5. 剩下的支持目录（官方脚本在新系统上也留给图形界面删）
+# 5. 剩下的支持目录（官方脚本在新系统上也留给图形界面删）和安装记录
 sudo rm -rf "$SUPPORT"
+for p in $(pkgutil --pkgs 2>/dev/null | grep '^com\.nomachine\.'); do
+    sudo pkgutil --forget "$p" >/dev/null 2>&1
+done
 
 # 6. 收回给 NoMachine 的系统授权（屏幕录制、辅助功能等，系统级和本用户的都清）
 sudo tccutil reset All com.nomachine.nxdock >/dev/null 2>&1
