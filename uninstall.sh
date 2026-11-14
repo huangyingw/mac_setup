@@ -49,6 +49,8 @@ main() {
     done
 
     # 4. 软件：Homebrew 是我们装的 → 整个卸掉；否则只卸我们装的那几个
+    #    （和别的 mac_setup 进程的 brew 操作错开，见 lib/common.sh 的 ms_brew_lock）
+    ms_brew_lock
     if ms_recorded brew /opt/homebrew || ms_recorded brew /usr/local; then
         ms_log "卸载 Homebrew（连同经它安装的全部软件）"
         awk -F'\t' '$1=="cask"{print $2}' "$MS_MANIFEST" | while IFS= read -r p; do
@@ -76,6 +78,7 @@ main() {
         # 还装着的 formula 仍在用的保留。对方原来就有的没记账，不动。
         ms_brew_etc_cleanup
     fi
+    ms_brew_unlock
     # Homebrew 的用户配置目录原来没有 → 删掉。必须排在最后一条 brew 命令之后：
     # 上面的 brew uninstall 自己会把它（信任记录的锁文件）再建出来，官方卸载脚本也不清它。
     awk -F'\t' '$1=="brewhome"{print $2}' "$MS_MANIFEST" | while IFS= read -r p; do

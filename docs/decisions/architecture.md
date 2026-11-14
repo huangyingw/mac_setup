@@ -33,7 +33,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/huangyingw/mac_setup/int
 - 按「前后差」而不是按软件名匹配：依赖的安装包叫什么事先不知道（装一个 `tmux` 会带下 `libevent`、`ncurses` 等），而对方原来就缓存着的同名安装包不该删；
 - 只看安装包条目（缓存顶层和 `Cask/` 下的链接、`downloads/` 下的文件），`api/`、`bootsnap/` 这类 brew 自己运转用的数据不算；
 - Homebrew 是我们装的不记（整个卸掉就行）；安装失败也记（下到一半的同样是我们带来的）；
-- 已知不覆盖：`brew install` 偶尔顺带跑的自动清理可能删掉对方原有的旧安装包，那是缓存，丢了 brew 会重新下载，不还原。演练机上若别的分支恰好同时在 `brew install`，它下载的会被记到这边——只影响演练，不影响真实场景。
+- 已知不覆盖：`brew install` 偶尔顺带跑的自动清理可能删掉对方原有的旧安装包，那是缓存，丢了 brew 会重新下载，不还原。
+- **演练机上几个分支同时跑**（2026-11-13 补）：「前后差」记账会把同一时间别人下载的东西记进自己的清单，恢复原状时删掉；两边的 brew 还会撞上 brew 自己的锁、安装直接失败。真实场景只有一个安装在跑，不会出现；但演练机是共用的，所以框架的 `ms_brew_install` 和 `uninstall.sh` 卸软件那一步用一把机器级的锁（`ms_brew_lock`，`mkdir` 原子创建，记持有者进程号，持有者不在了就接手，最多等 30 分钟）排队。不经框架直接敲的 `brew` 命令不受管。回归测试：`bash tests/brew_lock.sh`。
 - 回归测试：`bash tests/brew_cache.sh`（在临时家目录里用假的 brew 跑）。
 
 **Homebrew 的 `etc` 下新冒出来的配置也记账（`brewetc`）**（2026-11-13 补，起因是 loadrc 分支在演练机上发现）。有的 formula（多半是连带装上的依赖，如 `openssl@4`、`ca-certificates`）会往 `$(brew --prefix)/etc` 放配置文件，`brew uninstall` 不删它们，只打一行 `configuration files have not been removed!` 警告。Homebrew 是我们装的会整个删掉；**对方原来就有 Homebrew 时**，这些文件会留下。所以：

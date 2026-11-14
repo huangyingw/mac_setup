@@ -178,10 +178,37 @@ ms_brew_etc_list() {
     find "$prefix/etc" -mindepth 1 -maxdepth 1 2>/dev/null | LC_ALL=C sort
 }
 
+# 同一台机器上，各个 mac_setup 进程的 brew 安装 / 卸载一次只跑一个。
+# 真实场景只有一个安装在跑，用不上；演练机上几个分支（各用一个状态目录）同时跑时：
+#   - 前后两次列缓存 / etc 之间，别人下载的东西会被记进自己的清单，恢复原状时被删掉；
+#   - brew 自己的锁冲突（"has already locked ..."），安装直接失败。
+# 用 mkdir 当锁（原子操作），里面写持有者的进程号；持有者已经不在了（被打断）就接手。
+MS_BREW_LOCK="${MS_BREW_LOCK:-/tmp/mac_setup-brew.lock}"
+ms_brew_lock() {
+    local waited=0 pid
+    while ! mkdir "$MS_BREW_LOCK" 2>/dev/null; do
+        pid="$(cat "$MS_BREW_LOCK/pid" 2>/dev/null || true)"
+        if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+            rm -f "$MS_BREW_LOCK/pid"; rmdir "$MS_BREW_LOCK" 2>/dev/null || true
+            continue
+        fi
+        if [ $((waited % 60)) = 0 ]; then ms_log "等这台机器上另一个 mac_setup 的 brew 跑完（进程 ${pid:-?}）..."; fi
+        sleep 2; waited=$((waited + 2))
+        if [ "$waited" -ge 1800 ]; then ms_warn "等了 30 分钟还没轮到，不等了"; return 0; fi
+    done
+    echo $$ > "$MS_BREW_LOCK/pid"
+}
+ms_brew_unlock() {
+    if [ "$(cat "$MS_BREW_LOCK/pid" 2>/dev/null)" = "$$" ]; then
+        rm -f "$MS_BREW_LOCK/pid"; rmdir "$MS_BREW_LOCK" 2>/dev/null || true
+    fi
+}
+
 # ms_brew_install <brew install 的参数...>：跑 brew install，并把它新下载进缓存的安装包、
 # 新放进 etc 的配置记账。安装失败也记：下到一半的东西同样是我们带来的。
 ms_brew_install() {
     local before="" before_etc="" rc=0 f
+    ms_brew_lock
     if ! ms_recorded brew /opt/homebrew && ! ms_recorded brew /usr/local; then
         before="$(mktemp "$MS_HOME/brewcache.XXXXXX" 2>/dev/null)" || before=""
         if [ -n "$before" ]; then ms_brew_cache_list > "$before"; fi
@@ -201,6 +228,7 @@ ms_brew_install() {
         done
         rm -f "$before_etc"
     fi
+    ms_brew_unlock
     return "$rc"
 }
 

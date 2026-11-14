@@ -30,7 +30,7 @@ set -euo pipefail
 7. **不依赖参考机**：不能假设有人从别的机器 ssh 进来配合；需要的内容只能从公开的 GitHub 仓库或官方下载地址取。
 8. 内容来自别的仓库时，用 `https://` 匿名拉取，仓库必须登记在 `repos.txt`。
 
-公共函数见 `lib/common.sh`，记账与卸载的设计见 `docs/decisions/architecture.md`。框架的回归测试在 `tests/`（在临时家目录里跑，不碰真实环境）：`bash tests/shared_dirs.sh`。
+公共函数见 `lib/common.sh`，记账与卸载的设计见 `docs/decisions/architecture.md`。框架的回归测试在 `tests/`（在临时家目录里跑，不碰真实环境）：`for t in tests/*.sh; do bash "$t"; done`。
 
 ## 单独调试一个模块
 
@@ -52,4 +52,5 @@ ssh mba.local 'MS_HOME=$HOME/.mac_setup_<分支名> bash ~/.mac_setup_<分支名
 
 - 状态目录必须以 `~/.mac_setup` 开头（卸载结尾只肯删这样的目录）；
 - 卸载会依次跑 `modules/` 下**每个**模块的 `uninstall.sh`，所以模块的卸载脚本只能动自己记过账的东西，清单里没有就什么都不做；
-- 用默认状态目录的整套卸载（含卸 Homebrew）只在 `integration` 做整体演练时跑。
+- 用默认状态目录的整套卸载（含卸 Homebrew）只在 `integration` 做整体演练时跑；
+- 几个分支同时在 `mba` 上装 / 卸时，框架的 brew 操作（`ms_formula` / `ms_cask` 和恢复原状里卸软件那一步）在整台机器上**排队**，一次只跑一个（锁在 `/tmp/mac_setup-brew.lock`），轮到之前会打印「等这台机器上另一个 mac_setup 的 brew 跑完」。这样别人下载的安装包、放进 `etc` 的配置不会记进自己的清单，也不会撞上 brew 自己的锁。**不经框架直接敲的 `brew` 命令不排队**，照样会被同时在跑的那一方记进它的清单——要用 brew 就走 `ms_formula` / `ms_cask`。
