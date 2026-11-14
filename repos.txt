@@ -3,11 +3,11 @@
 # 只登记「平时是 private」的仓库：unpublish.sh 会把这里的每一个都改回 private 并逐个核对。
 #
 # 格式：<GitHub 仓库>  <方式>  <第三列>
-#   direct    直接公开原仓库。第三列 = 参考机上的本地检出；公开前扫描它在 GitHub 上的完整提交历史。
+#   direct    公开原仓库本身（窗口期临时公开，unpublish.sh 改回私有）。第三列 = 参考机上的本地检出；公开前扫描它在 GitHub 上的完整提交历史。
 #   snapshot  原仓库不公开。第三列 = 快照名：按 snapshots/<名>.conf 和 snapshots/<名>.include
 #             从原仓库导出「只含需要的文件、不带历史」的快照，推到这个仓库，再公开它。
 #
-# huangyingw/loadrc：用户 2026-11-13 定为清理历史后直接公开（不再走快照）。清理完成之前它的密钥检查过不了，
+# huangyingw/loadrc：2026-11-13 起不再走快照，和其它仓库一样窗口期临时公开原仓库。它的历史还没通过密钥检查（清不清、怎么清待用户同意），
 # 不带参数的 publish.sh 会整批失败——这期间测别的仓库就点名：local/publish.sh <仓库>...
 # huangyingw/neovim：loadrc 的子模块，nvim 的配置在里面；历史里的命中都是上游 neovim 的误报（见 local/gitleaksignore）。
 

@@ -3,7 +3,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPOS_FILE="$ROOT/repos.txt"
 
 # 这几个仓库无论清单怎么写都拒绝公开。
-# （huangyingw/loadrc 2026-11-13 起不在这里：用户定为清理历史后直接公开，由下面的密钥检查把关，
+# （huangyingw/loadrc 2026-11-13 起不在这里：改为 onsite 时临时公开原仓库、装完改回私有，由下面的密钥检查把关，
 #   清理完成之前检查过不了，照样公开不了。）
 NEVER_PUBLIC="huangyingw/ssh huangyingw/keys"
 
