@@ -25,7 +25,7 @@ NXD="$APP/Contents/Frameworks/bin/nxd"
 PORT=4000
 FW=/usr/libexec/ApplicationFirewall/socketfilterfw
 PAGE="https://download.nomachine.com/download/?id=117&platform=mac"   # 官网「NoMachine Personal Edition for Mac」
-TEAM="NoMachine S.a r.l."                                              # 安装包签名里的开发者名
+TEAM="NoMachine S.a.r.l. (493C5JZAGR)"                                 # 安装包签名里的开发者（含苹果团队 ID）
 DMG="$MS_HOME/nomachine.dmg"   # 下载的安装包和挂载点放在状态目录里，恢复原状时随状态目录一起删
 MNT="$MS_HOME/nomachine-mnt"
 
@@ -69,8 +69,8 @@ if ! ours; then
     md5="$(printf '%s' "$page" | sed 's/<[^>]*>/ /g' | tr -s ' \n\t' ' ' \
         | sed -n 's/.*MD5 signature: *\([0-9a-f]\{32\}\).*/\1/p' | head -1)"
     [ -n "$url" ] || ms_die "NoMachine 下载页上没找到 macOS 安装包的地址（页面改版了？看 $PAGE）"
-    ms_log "下载 ${url##*/}..."
-    curl -fL --retry 3 -o "$DMG" "$url" || ms_die "NoMachine 安装包下载失败：$url"
+    ms_log "下载 ${url##*/}（约 100MB）..."
+    curl -fsSL --retry 3 -o "$DMG" "$url" || ms_die "NoMachine 安装包下载失败：$url"
     if [ -n "$md5" ]; then
         [ "$(md5 -q "$DMG")" = "$md5" ] || ms_die "NoMachine 安装包的 MD5 和下载页上写的不一致，不装"
     else
