@@ -76,7 +76,9 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/huangyingw/mac_setup/int
 
 `claude-config`、`codex-config` 的完整历史通过了检查，按原设想直接公开。
 
-### 4.1 讨论中：改写 loadrc 历史，去掉快照（2026-11-13 用户提出，未定）
+### 4.1 已定：改写 loadrc 历史，去掉快照（2026-11-13 用户提出并选定）
+
+**结论（用户 2026-11-13 原意）**：特别不喜欢快照仓库，选「分几轮把敏感提交清掉」；onsite 时照旧临时公开、装完改回私有。下面「另一条路」（只读凭证）不采用。清历史在 loadrc 仓库自己做；本仓库这边 `20-loadrc` 改成直接克隆 loadrc，快照机制随后下线。
 
 用户嫌快照仓库增加维护量，提议：把敏感提交从 `loadrc` 历史里拿掉 → 覆盖远程 → 加 git hook 防止别的机器把旧历史推回去。
 
