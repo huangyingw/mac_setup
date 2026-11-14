@@ -1,17 +1,20 @@
 #!/bin/bash
-# loadrc：取快照到 ~/loadrc，接好 zsh / tmux / nvim / git / iTerm2 的配置，让 clauderc 的 multi-agent 工具能用。
+# loadrc：把 huangyingw/loadrc 克隆到 ~/loadrc，接好 zsh / tmux / nvim / git / iTerm2 的配置，
+# 让 clauderc 的 multi-agent 工具能用。
 #
-# ~/loadrc 的来源是公开窗口期的 huangyingw/loadrc-snapshot（原仓库永不公开，见 AGENTS.md 第 5 节），
-# 里面有什么由 snapshots/loadrc.include 决定。设计依据、与参考机的差异见 docs/decisions/loadrc-module.md。
+# 公开窗口期直接匿名克隆 loadrc 本身（只取最新一层，不带历史），子模块只取下面 SUBMODULES 列出的、
+# 公开拉得到的那几个；keys、.ssh 等不公开的子模块不取。见 AGENTS.md 第 5 节、docs/decisions/loadrc-module.md。
 #
 # 调试用的环境变量：
-#   MS_LOADRC_URL       换一个快照地址（如参考机上 SNAPSHOT_LOCAL_ONLY=1 导出的本地目录）
+#   MS_LOADRC_URL       换一个 loadrc 地址（参考机上试跑可用 git@github.com:huangyingw/loadrc.git，子模块照样匿名拉）
+#   MS_LOADRC_REF       换一个分支（默认 integration，参考机 ~/loadrc 跟踪的就是它）
 #   MS_LOADRC_SANDBOX=1 只做落在 $HOME 里的事，跳过 crontab / 应用设置 / launchd / 装软件
 #                       （在参考机上用假的 HOME 试跑时用，免得动到参考机自己的环境）
 set -euo pipefail
 . "$MS_SRC/lib/common.sh"
 
-SNAPSHOT_URL="${MS_LOADRC_URL:-https://github.com/huangyingw/loadrc-snapshot.git}"
+LOADRC_URL="${MS_LOADRC_URL:-https://github.com/huangyingw/loadrc.git}"
+LOADRC_REF="${MS_LOADRC_REF:-integration}"
 SANDBOX="${MS_LOADRC_SANDBOX:-}"
 LOADRC="$HOME/loadrc"
 MOD_DIR="$MS_SRC/modules/20-loadrc"
@@ -26,16 +29,47 @@ CRON_SKIP='codex_update\.py|auto_compact_guard\.py'
 ITERM_DOMAIN="com.googlecode.iterm2"
 ITERM_PLIST="$HOME/Library/LaunchAgents/com.huangyingw.iterm2-bell-daemon.plist"
 
+# 要取的子模块（其余的——keys、.ssh、各机器的运维工具等——不取）。
+# neovim 是私有仓库，公开窗口期要和 loadrc 一起公开，否则 nvim 没有配置（见决策文档第 1 节）。
+SUBMODULES=(
+    oh-my-zsh
+    .tmux/plugins/tpm
+    update_project
+    neovim
+    vimrc/.vim/bundle/LargeFile
+    vimrc/.vim/bundle/bufexplorer
+    vimrc/.vim/bundle/tig-explorer.vim
+    vimrc/.vim/bundle/vim-fetch
+    vimrc/.vim/bundle/vim-fugitive
+    vimrc/.vim/bundle/vim-anyfold
+    vimrc/.vim/bundle/vim-autoformat
+)
+
 # 匿名拉取：不弹账号输入、不用对方存的凭证、不触发全局 git 钩子（装好以后全局钩子会自动 pull / push）
 ms_git() {
     GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.hooksPath=/dev/null "$@" </dev/null
+}
+
+# 取子模块：.gitmodules 里写的是 ssh 地址，匿名只能走 https；两个放在 Bitbucket 上的，
+# 改从 GitHub 上内容相同的分叉拉（固定的那个提交两边都有）。改写只在这次命令里生效，不写进任何配置。
+fetch_submodules() {
+    local dir="$1" p failed=""
+    for p in "${SUBMODULES[@]}"; do
+        ms_git -C "$dir" \
+            -c url."https://github.com/".insteadOf="git@github.com:" \
+            -c url."https://github.com/huangyingw/vim-anyfold.git".insteadOf="git@bitbucket.org:huangyingw/vim-anyfold.git" \
+            -c url."https://github.com/huangyingw/vim-autoformat.git".insteadOf="git@bitbucket.org:huangyingw/vim-autoformat.git" \
+            submodule update --init --depth 1 --quiet -- "$p" >/dev/null 2>&1 \
+            || failed="$failed $p"
+    done
+    [ -z "$failed" ] || ms_warn "这些子模块没拉到（还没公开？）:$failed"
 }
 
 # link <源> <落点>：落点上对方原有的东西先备份，再建软链接
 link() {
     local src="$1" dst="$2"
     if [ ! -e "$src" ]; then
-        ms_warn "快照里没有 ${src}，没有建 ${dst}"
+        ms_warn "~/loadrc 里没有 ${src}，没有建 ${dst}"
         return 0
     fi
     ms_claim "$dst"
@@ -63,19 +97,20 @@ fi
 # 先拉到临时目录，成功了才动对方原有的东西。
 
 if ms_recorded path "$LOADRC" && [ -d "$LOADRC/.git" ]; then
-    # 重跑：只快进。拉不动不算失败（快照仓库可能已改回私有）
+    # 重跑：只快进。拉不动不算失败（仓库可能已改回私有）
     if ms_git -C "$LOADRC" pull --ff-only --quiet; then
-        ms_git -C "$LOADRC" submodule update --init --recursive --quiet \
-            || ms_warn "~/loadrc 的子模块没能更新，沿用现有内容"
+        fetch_submodules "$LOADRC"
     else
-        ms_warn "~/loadrc 没能更新到最新（快照仓库已改回私有？），沿用现有内容"
+        ms_warn "~/loadrc 没能更新到最新（仓库已改回私有？），沿用现有内容"
     fi
 else
-    ms_log "拉取 loadrc 快照 → ${LOADRC}"
+    ms_log "拉取 loadrc → ${LOADRC}"
     rm -rf "$TMP_DIR"
     mkdir -p "$TMP_DIR"
-    ms_git clone --quiet --recurse-submodules --shallow-submodules "$SNAPSHOT_URL" "$TMP_DIR/loadrc" \
-        || ms_die "拉不到 ${SNAPSHOT_URL}（还没公开？参考机上先跑 local/publish.sh huangyingw/loadrc-snapshot）"
+    ms_git clone --quiet --depth 1 --single-branch --branch "$LOADRC_REF" --no-recurse-submodules \
+        "$LOADRC_URL" "$TMP_DIR/loadrc" \
+        || ms_die "拉不到 ${LOADRC_URL}（还没公开？参考机上先跑 local/publish.sh）"
+    fetch_submodules "$TMP_DIR/loadrc"
     ms_claim "$LOADRC"
     # 走到这里落点上还有东西，只可能是上次没装完留下的半成品（已记为我们的），清掉
     ms_remove_path "$LOADRC"
@@ -153,10 +188,13 @@ ms_own_if_absent "$HOME/Library/Caches/com.apple.python"
 # ---------- 4. nvim 插件 ----------
 # 配置里的插件平时是第一次打开 nvim 时在后台装、重启后才生效；这里先装好，打开就能用。
 
-if command -v nvim >/dev/null 2>&1; then
+if [ ! -f "$LOADRC/neovim/init.lua" ]; then
+    ms_warn "没有 nvim 的配置（neovim 子模块没拉到），nvim 打开是默认样子"
+    ms_todo "nvim 的配置没装上：huangyingw/neovim 公开后重跑一次安装命令"
+elif command -v nvim >/dev/null 2>&1; then
     ms_log "预装 nvim 插件（要几分钟）"
     if GIT_TERMINAL_PROMPT=0 nvim --headless "+Lazy! install" +qa </dev/null >"$MS_HOME/nvim-plugins.log" 2>&1; then
-        n="$(find "$LOADRC/neovim/lazy" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')"
+        n="$(find "$LOADRC/neovim/lazy" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ' || true)"
         ms_log "nvim 插件已装 ${n} 个"
     else
         ms_warn "nvim 插件没有全部装上（记录在 ${MS_HOME}/nvim-plugins.log），打开 nvim 时会在后台补装"
@@ -171,7 +209,7 @@ fi
 
 cron_install() {
     local src="$LOADRC/clauderc/cc.cron" entries existing stripped n
-    [ -f "$src" ] || { ms_warn "快照里没有 clauderc/cc.cron，没有装定时任务"; return 0; }
+    [ -f "$src" ] || { ms_warn "~/loadrc 里没有 clauderc/cc.cron，没有装定时任务"; return 0; }
     entries="$(grep -vE '^[[:space:]]*(#|$)' "$src" | grep -vE "$CRON_SKIP" || true)"
     [ -n "$entries" ] || return 0
     existing="$(crontab -l 2>/dev/null || true)"
@@ -202,7 +240,7 @@ if [ -z "$SANDBOX" ]; then cron_install; fi
 
 iterm_setup() {
     [ -d /Applications/iTerm.app ] || { ms_warn "没有 iTerm2（由 10-base 模块装），跳过它的配置"; return 0; }
-    [ -f "$LOADRC/iterm2rc/install.sh" ] || { ms_warn "快照里没有 iterm2rc，跳过 iTerm2 的配置"; return 0; }
+    [ -f "$LOADRC/iterm2rc/install.sh" ] || { ms_warn "~/loadrc 里没有 iterm2rc，跳过 iTerm2 的配置"; return 0; }
     if ! ms_recorded defaults "$ITERM_DOMAIN"; then
         if defaults read "$ITERM_DOMAIN" >/dev/null 2>&1; then
             defaults export "$ITERM_DOMAIN" "$MS_BACKUP_DIR/$ITERM_DOMAIN.plist"
@@ -233,7 +271,7 @@ if [ -z "$SANDBOX" ]; then iterm_setup; fi
 
 # ---------- 7. 收尾 ----------
 
-ms_log "~/loadrc 在快照提交 $(ms_git -C "$LOADRC" rev-parse --short HEAD)（$(sed -n 's/^来源提交: //p' "$LOADRC/SNAPSHOT_SOURCE" 2>/dev/null | cut -c1-9)）"
+ms_log "~/loadrc 在 ${LOADRC_REF} 的提交 $(ms_git -C "$LOADRC" rev-parse --short HEAD)"
 
 if [ -z "$SANDBOX" ]; then
     shell_now="$(dscl . -read "$HOME" UserShell 2>/dev/null | awk '{print $2}')"

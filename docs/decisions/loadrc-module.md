@@ -1,44 +1,26 @@
 # `20-loadrc` 模块：设计依据
 
-2026-11-13。模块做的事：把 loadrc 的快照放到目标机 `~/loadrc`，接好 zsh / tmux / nvim / git / iTerm2 的配置，
+2026-11-13。模块做的事：把 loadrc 克隆到目标机 `~/loadrc`，接好 zsh / tmux / nvim / git / iTerm2 的配置，
 让 `clauderc` 的 multi-agent 工具（交接、项目总台、各种巡查）能用。
 
-相关文件：`modules/20-loadrc/{install.sh,uninstall.sh,zshrc}`、`snapshots/loadrc.{conf,include}`。
+相关文件：`modules/20-loadrc/{install.sh,uninstall.sh,zshrc}`。
 
-## 1. 快照里放什么
+## 1. `~/loadrc` 从哪来、取哪些子模块
 
-`huangyingw/loadrc` 永不公开（`AGENTS.md` 第 5 节），目标机拿到的是 `huangyingw/loadrc-snapshot`：
-只含 `snapshots/loadrc.include` 列出的文件、不带历史。
+**2026-11-13 起直接克隆 `huangyingw/loadrc` 本身**（用户定：不要快照仓库，loadrc 清理历史后和其它仓库一样临时公开，
+见 `AGENTS.md` 第 5 节）。原先的快照 `huangyingw/loadrc-snapshot` 与白名单 `snapshots/loadrc.include` 随之下线。
 
-**原则：只导目标机用得上的。** 漏导 = 目标机少个功能，看得见、能补；多导 = 泄露，收不回。
-密钥检查工具查不出明文口令、内网地址这类东西，所以：
+- 克隆 `integration` 分支（参考机 `~/loadrc` 跟踪的就是它），只取最新一层（`--depth 1`），约 120 MB；
+- 子模块**只取安装脚本 `SUBMODULES` 列出的 11 个**，都是用得上的：oh-my-zsh、tmux 插件管理器、
+  项目索引脚本 `update_project`、nvim 配置 `neovim`、7 个 vim 插件。其余子模块（`keys`、`.ssh`、各机器的运维工具等）不取，
+  所以 `keys`、`.ssh` 不公开也不影响安装；
+- `.gitmodules` 里写的多是 ssh 地址，匿名只能走 https，取的时候在命令行上临时改写，不写进任何配置；
+- `vim-anyfold`、`vim-autoformat` 两个子模块放在 Bitbucket（匿名拉不到），改从 GitHub 上我自己的公开分叉拉——固定的那个提交两边都有；
+- **`neovim` 子模块是私有仓库**：公开窗口期要和 loadrc 一起公开，否则 nvim 没有配置（安装不会失败，会提示并登记人工事项）。
+- 增加子模块：确认它公开拉得到（或有公开的同一份），加进 `SUBMODULES`，按第 6 节在假的家目录里试装。
 
-- `bashrc` / `vishrc` / `agentrc` / `iterm2rc` 这些「什么都往里放」的目录**逐个文件写**，不整目录导；
-- 整目录导的只有内容单一的：`vimrc`、`gitrc`、`clauderc`、`tmuxrc`、`.git-templates`，并排除其中的测试和跨机同步脚本；
-- 改动白名单后，除了脚本自带的密钥检查，还要人工看一遍新增的文件（内网地址、口令赋值、机器清单）。
-
-各项的理由：
-
-| 白名单项 | 为什么要 |
-|---|---|
-| `.pathrc` `.envrc` `.gitrc` `.shellrc` `.macosrc` `.gorc` | 访客版 `~/.zshrc` 逐个加载的 rc：PATH、环境变量、别名、`claude` / `codex` 两个启动函数 |
-| `oh-my-zsh`（子模块） | zsh 框架 |
-| `.tmux.conf` `.tmux/plugins/tpm` `tmuxrc` | tmux 配置、插件管理器、配置里调用的脚本 |
-| `vimrc`（除测试） | vim / nvim 的全部配置和本地插件 |
-| `@vimrc/.vim/bundle/vim-anyfold` `@…/vim-autoformat` | 这两个子模块匿名拉不到，文件直接并进快照 |
-| `neovim/init.lua` `neovim/.config/nvim/lua` | nvim 入口和 lazy.nvim 的插件清单（`neovim` 子模块是私有的，只取这两处） |
-| `update_project`（子模块） | vim 命令和 git 钩子用的项目索引脚本 |
-| `gitrc`（除 `gbil.log`）`.git-templates` | 全局 git 配置、别名脚本、全局钩子 |
-| `bashrc/*.sh` `vishrc/*.sh`（逐个） | 被 vim 命令、tmux 配置、git 别名调用到的脚本（按引用关系找出来的） |
-| `clauderc`（除测试、两个跨机同步脚本） | multi-agent 工具本体 |
-| `agentrc/*.json`（3 个） | 工具读的开关文件 |
-| `converge/crontab_lock.sh` | 巡查脚本共用的锁 |
-| `iterm2rc/*`（7 个） | iTerm2 标签染色守护进程和它的安装脚本 |
-
-**增补办法**：在 `snapshots/loadrc.include` 加一行 → `SNAPSHOT_LOCAL_ONLY=1 local/snapshot.sh loadrc huangyingw/loadrc-snapshot`
-在本地导出 → 看 `~/.cache/mac_setup/snapshots/loadrc` 里新增的文件 → 按第 6 节的办法在假的家目录里试装。
-
-不带的：`keys`、`.ssh` 两个子模块（用户定的不公开）、含凭证的 rc、按主机名加载的 rc、各机器的运维脚本。
+与快照相比，目标机上多了 loadrc 里其它没被引用的文件，但访客版 `~/.zshrc` 只加载第 2 节那几个 rc，
+其余文件不会自己运行。仓库里有没有不能公开的内容，由公开前的密钥检查和 loadrc 的历史清理把关。
 
 ## 2. `~/.zshrc`：用模块自带的访客版，不用 loadrc 的
 
@@ -47,7 +29,7 @@
 
 所以 `modules/20-loadrc/zshrc` 是一份单独维护的版本，效果与参考机一致，差别只有：
 
-- 不加载 `.loadrc`，只逐个加载快照里带过来的 6 个 rc；
+- 不加载 `.loadrc`，只逐个加载 6 个 rc（`.pathrc` `.envrc` `.gitrc` `.shellrc` `.macosrc` `.gorc`）；
 - 不自动起 ssh-agent、不把这台机器上的私钥加进去；
 - 命令历史单独记在 `~/.zsh_history_mac_setup`，不写进机主的 `~/.zsh_history`；
 - 补全缓存放进 `~/loadrc` 里，不落在家目录；
@@ -132,7 +114,8 @@
 
 不必每次都上演练机。两个环境变量：
 
-- `MS_LOADRC_URL=<本地快照目录>`：不从 GitHub 拉，用 `SNAPSHOT_LOCAL_ONLY=1` 导出的本地快照；
+- `MS_LOADRC_URL=git@github.com:huangyingw/loadrc.git`：loadrc 还是私有时用 ssh 克隆主仓库；子模块照样匿名拉，
+  正好检验「公开窗口期能不能拉到」（私有的 `neovim` 会拉不到，要测 nvim 就在假家目录里手工补拉一次）；
 - `MS_LOADRC_SANDBOX=1`：只做落在 `$HOME` 里的事，跳过装软件、crontab、iTerm2、钥匙串。**卸载时也要带**，
   否则卸载会去动参考机自己的 crontab 和钥匙串。
 
@@ -145,7 +128,7 @@
 
 ## 7. 与 `30-agents` 的衔接
 
-- 顺序：`20-loadrc` 在前。`30-agents` 安装时若 `~/loadrc/clauderc/` 下有 git 过滤器安装脚本就会跑，快照里带着。
+- 顺序：`20-loadrc` 在前。`30-agents` 安装时若 `~/loadrc/clauderc/` 下有 git 过滤器安装脚本就会跑，`~/loadrc` 里有。
 - `claude` / `codex` 两个命令是 `.shellrc` 里的函数，分别调 `clauderc/claude_wrapper.py`（本体找 `~/.local/bin/claude`）
   和 `clauderc/codex_wrapper.py`（本体从 PATH 里找）；访客版 zshrc 的 PATH 含 `~/.local/bin` 和 `/opt/homebrew/bin`。
-- 两份配置里的 hook 和状态栏引用 `~/loadrc/clauderc/` 下 17 个脚本，快照里全有。
+- 两份配置里的 hook 和状态栏引用 `~/loadrc/clauderc/` 下 17 个脚本，`~/loadrc` 里全有。
