@@ -41,8 +41,14 @@ sudo rm -f "$AGENT_PLIST"
 sudo rm -rf "$APP"
 if [ -f "$VENDOR" ]; then
     ms_log "运行 NoMachine 官方卸载脚本..."
-    sudo /bin/bash "$VENDOR" >> "$MS_HOME/nomachine-uninstall.log" 2>&1 \
-        || ms_warn "NoMachine 官方卸载脚本报错（日志 $MS_HOME/nomachine-uninstall.log），继续"
+    # 不看它的退出码：它最后一步是从 launchd 摘掉 com.nomachine.uninstall，上面已经摘过，必然「失败」。
+    # 看它自己打的错误行（它把 ERROR 拼成了 ERORR）。日志在状态目录里，恢复原状结束时随之删掉，所以当场打出来。
+    log="$MS_HOME/nomachine-uninstall.log"
+    sudo /bin/bash "$VENDOR" > "$log" 2>&1
+    if grep -qE 'ERORR|ERROR' "$log"; then
+        ms_warn "NoMachine 官方卸载脚本报了错，继续："
+        grep -E 'ERORR|ERROR' "$log" | head -10 >&2
+    fi
 else
     ms_warn "找不到 NoMachine 官方卸载脚本，只做下面的补充清理"
 fi
@@ -50,7 +56,9 @@ fi
 # 4. 官方脚本在新系统上交给图形界面做的：删系统用户 nx / nxhtd（连同同名组、隐藏用户列表里的名字）
 for u in nx nxhtd; do
     if dscl . -read "/Users/$u" >/dev/null 2>&1; then
-        sudo sysadminctl -deleteUser "$u" >/dev/null 2>&1 || sudo dscl . -delete "/Users/$u" 2>/dev/null
+        # 不用 sysadminctl -deleteUser：它会在 /Library/Preferences/com.apple.preferences.accounts.plist 里
+        # 留一条「删过的用户」记录。官方脚本在旧系统上也是用 dscl 删的。
+        sudo dscl . -delete "/Users/$u" 2>/dev/null
         dscl . -read "/Users/$u" >/dev/null 2>&1 && ms_warn "系统用户 $u 没删掉" || ms_log "已删除系统用户 $u"
     fi
     if dscl . -read "/Groups/$u" >/dev/null 2>&1; then
@@ -79,7 +87,20 @@ for p in $(pkgutil --pkgs 2>/dev/null | grep '^com\.nomachine\.'); do
     sudo pkgutil --forget "$p" >/dev/null 2>&1
 done
 
-# 6. 收回给 NoMachine 的系统授权（屏幕录制、辅助功能等，系统级和本用户的都清）
+# 6. 别的程序替它记下的条目（原来就有这些文件时才走到这里；原来没有的已记在清单里，随后整个删掉）
+#    - 系统记下的「它要过辅助功能授权」；
+#    - 系统音频服务记下的 NoMachine 虚拟声卡（上面官方脚本重启音频服务时会把它们写进去）。
+UAW=com.apple.universalaccessAuthWarning
+defaults read "$UAW" 2>/dev/null | grep -i nomachine | sed -n 's/^ *"\(.*\)" = .*/\1/p' | while IFS= read -r k; do
+    defaults delete "$UAW" "$k" 2>/dev/null
+done
+AUD=/Library/Preferences/Audio/com.apple.audio.DeviceSettings.plist
+if [ -f "$AUD" ]; then
+    for k in NMAudioDevice_UID NMAudioMicDevice_UID; do sudo plutil -remove "$k" "$AUD" >/dev/null 2>&1; done
+fi
+killall -u "$(id -un)" cfprefsd 2>/dev/null
+
+# 7. 收回给 NoMachine 的系统授权（屏幕录制、辅助功能等，系统级和本用户的都清）
 sudo tccutil reset All com.nomachine.nxdock >/dev/null 2>&1
 tccutil reset All com.nomachine.nxdock >/dev/null 2>&1
 ms_log "NoMachine 的系统级部分已清理"

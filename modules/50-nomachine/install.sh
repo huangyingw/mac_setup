@@ -49,6 +49,11 @@ if ! ours; then
         "$HOME/Library/Saved Application State/com.nomachine.nxdock.savedState"; do
         ms_claim "$p"
     done
+    # 运行时由别的程序替它写出来的：它的界面库的设置、系统记下「它要过辅助功能授权」、
+    # 系统音频服务记下它的虚拟声卡。原来没有 → 记为我们的；原来就有 → 恢复原状时只摘掉 NoMachine 的条目。
+    ms_own_if_absent "$HOME/.qt" \
+        "$HOME/Library/Preferences/com.apple.universalaccessAuthWarning.plist" \
+        /Library/Preferences/Audio/com.apple.audio.DeviceSettings.plist
 
     # 应用目录已经不在、但系统里还留着以前装 NoMachine 的残余（对方卸得不干净）：照装，提醒一句。
     if [ -d /etc/NX ] || dscl . -read /Users/nx >/dev/null 2>&1; then
