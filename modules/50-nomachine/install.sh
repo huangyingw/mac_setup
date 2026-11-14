@@ -98,7 +98,7 @@ if ! ours; then
 
     # 先记账再安装：装到一半被打断，恢复原状时也知道要清
     ms_record nm-pkg "$APP"
-    ms_log "安装 NoMachine（要管理员权限）..."
+    ms_log "安装 NoMachine（要管理员权限；通常一两分钟，它启动服务时偶尔会卡在查询系统信息上十来分钟，等着就好）..."
     sudo installer -pkg "$pkg" -target / </dev/null >/dev/null || { hdiutil detach -quiet "$MNT"; ms_die "NoMachine 安装失败"; }
     hdiutil detach -quiet "$MNT" || true
     rm -rf "$MNT" "$DMG"
@@ -132,15 +132,12 @@ until nc -z -G 2 127.0.0.1 "$PORT" >/dev/null 2>&1; do
 done
 ms_log "NoMachine 服务已在 ${PORT} 端口监听"
 
-# 许可：10.x 不激活不接受连接
-if sudo /etc/NX/nxserver --subscription 2>/dev/null | grep -qiE 'expired|not (valid|active|activated)|no (valid )?subscription|invalid'; then
-    licensed=""
-elif sudo /etc/NX/nxserver --subscription >/dev/null 2>&1; then
-    licensed=1
+# 许可：10.x 不激活不接受连接。看到有效的订阅号、且没有「没有订阅 / 过期」字样才算已激活，其余一律列为人工事项。
+sub="$(sudo /etc/NX/nxserver --subscription 2>&1 || true)"
+if printf '%s\n' "$sub" | grep -q 'Subscription id: *[^ (]' \
+        && ! printf '%s\n' "$sub" | grep -qiE 'no subscription|expired|invalid'; then
+    ms_log "NoMachine 已激活"
 else
-    licensed=""
-fi
-if [ -z "$licensed" ]; then
     ms_todo "NoMachine：要先激活才能连进来——在 nomachine.com 登录账号，User Area → Software → Evaluations 生成 14 天试用许可（或用订阅），然后在这台机器上运行 sudo /etc/NX/nxserver --subscriptionset <许可码或 server.lic 的路径>，用 sudo /etc/NX/nxserver --subscription 确认"
 fi
 

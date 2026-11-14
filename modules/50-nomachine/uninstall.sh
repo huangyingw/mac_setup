@@ -34,6 +34,8 @@ uid="$(id -u)"
 #    - com.nomachine.uninstallAgent 会被官方脚本拉起，弹出要输密码的卸载窗口。
 sudo launchctl bootout system/com.nomachine.uninstall 2>/dev/null
 sudo launchctl bootout "gui/$uid/com.nomachine.uninstallAgent" 2>/dev/null
+# 本用户会话里的 NoMachine 服务也先停掉：官方脚本停它的办法在 ssh / 脚本环境里会失败（只报错、不影响后面）
+sudo launchctl bootout "gui/$uid/com.nomachine.localnxserver" 2>/dev/null
 sudo rm -f "$AGENT_PLIST"
 
 # 3. 官方卸载脚本只在应用目录已经不在时才干活：先删应用，再跑它。
@@ -45,9 +47,11 @@ if [ -f "$VENDOR" ]; then
     # 看它自己打的错误行（它把 ERROR 拼成了 ERORR）。日志在状态目录里，恢复原状结束时随之删掉，所以当场打出来。
     log="$MS_HOME/nomachine-uninstall.log"
     sudo /bin/bash "$VENDOR" > "$log" 2>&1
-    if grep -qE 'ERORR|ERROR' "$log"; then
+    #  「停不掉 localnxserver」那两行是上面已经停掉了它、官方脚本再停一次的结果，不算错。
+    errs="$(grep -E 'ERORR|ERROR' "$log" | grep -v localnxserver || true)"
+    if [ -n "$errs" ]; then
         ms_warn "NoMachine 官方卸载脚本报了错，继续："
-        grep -E 'ERORR|ERROR' "$log" | head -10 >&2
+        printf '%s\n' "$errs" | head -10 >&2
     fi
 else
     ms_warn "找不到 NoMachine 官方卸载脚本，只做下面的补充清理"
@@ -103,5 +107,8 @@ killall -u "$(id -un)" cfprefsd 2>/dev/null
 # 7. 收回给 NoMachine 的系统授权（屏幕录制、辅助功能等，系统级和本用户的都清）
 sudo tccutil reset All com.nomachine.nxdock >/dev/null 2>&1
 tccutil reset All com.nomachine.nxdock >/dev/null 2>&1
+left="$( { sudo launchctl list; launchctl list; } 2>/dev/null | awk '{print $3}' | grep '^com\.nomachine\.' | sort -u | tr '\n' ' ')"
+[ -z "$left" ] || ms_warn "还有 NoMachine 的服务在 launchd 里：${left}（注销或重启后消失）"
+pgrep -f /Applications/NoMachine.app >/dev/null 2>&1 && ms_warn "还有 NoMachine 的进程在跑（pgrep -lf NoMachine 查看）"
 ms_log "NoMachine 的系统级部分已清理"
 exit 0
