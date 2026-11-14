@@ -1,7 +1,7 @@
 # 由 mac_setup 的 20-loadrc 模块放到 ~/.zshrc（别人电脑上用的版本）。
 #
 # 与参考机 ~/loadrc/.zshrc 的效果一致，只去掉不该在别人电脑上发生的事：
-#   - 不加载 ~/loadrc/.loadrc 整条链，只逐个加载快照里带过来的 rc（.loadrc 末尾会在每开一个
+#   - 不加载 ~/loadrc/.loadrc 整条链，只逐个加载需要的几个 rc（.loadrc 末尾会在每开一个
 #     shell 时重装 crontab、按主机名执行带 sudo 的命令、加载含凭证的文件）；
 #   - 不自动起 ssh-agent、不把这台机器上的私钥加进 agent；
 #   - 命令历史单独记一份，不写进机主的 ~/.zsh_history；补全缓存放进 ~/loadrc 里，不落在家目录。
@@ -21,7 +21,7 @@ HISTFILE="$HOME/.zsh_history_mac_setup"
 ZSH_COMPDUMP="$HOME/loadrc/.zcompdump"
 [ -f "$ZSH/oh-my-zsh.sh" ] && source "$ZSH/oh-my-zsh.sh"
 
-# ---- loadrc 的 rc：只加载快照里有的 ----
+# ---- loadrc 的 rc：只加载这几个 ----
 for _ms_rc in .pathrc .envrc .gitrc .shellrc .macosrc .gorc; do
     [ -f "$HOME/loadrc/$_ms_rc" ] && . "$HOME/loadrc/$_ms_rc"
 done
