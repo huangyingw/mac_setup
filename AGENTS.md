@@ -55,6 +55,7 @@
 | Claude Code | 配置在 `~/.claude`，即 GitHub `huangyingw/claude-config`（私有） |
 | Codex | 配置在 `~/.codex`，即 GitHub `huangyingw/codex-config`（私有） |
 | Chrome | `/Applications/Google Chrome.app` |
+| NoMachine（远程图形界面连接） | `/Applications/NoMachine.app`，9.10.3；Homebrew cask `nomachine`（2026-11-13 补登记） |
 | tmux | Homebrew `tmux` 3.8；agent 会话都跑在 tmux 里（`20-loadrc` 装） |
 | python | Homebrew `python@3.15` 3.15.2；`clauderc` 的脚本用，系统自带的 `python3` 在干净系统上只是占位程序（`20-loadrc` 装） |
 | gh | Homebrew `gh` 2.103.3；全局 git 配置把 GitHub 凭证交给它，登录是人工事项（`20-loadrc` 装） |
@@ -65,6 +66,7 @@
 
 - **Spokenly**：不需要登录；要**安装**、把配置做成和参考机**一模一样**、并**下载好语音模型**。模型按 `mbp` 的标准选——即按 **16GB 内存**的机器选合适的模型（参考机 `studio` 是 64GB，不能直接照搬它的模型选择；`mba` 也是 16GB）。
 - **本机转写服务**（2026-11-13 补登记——`40-spokenly` 模块做完之后才登记的，顺序上晚了）：参考机上 Spokenly 的听写模型不是它内置的，而是指向这套本机服务，所以上一条的「下载好语音模型」落到实处就是**把这套服务连同模型一起装好**。目标机上装的是：Homebrew 的 `uv`、服务目录 `~/.local/share/qwen3-asr-server`（Python 环境、依赖、模型、日志都收在里面，约 3.8G）、16GB 档的模型 `Qwen3-ASR-0.6B-8bit`、一个 launchd 配置。`voice_input` 本身不公开（里面有个人口述的转写文本），只经快照 `huangyingw/voice_input-snapshot` 公开模块用到的几个文件（白名单 `snapshots/voice_input.include`）。只支持 Apple 芯片。详见 `docs/decisions/spokenly.md`。
+- **NoMachine**（用户 2026-11-13 提出）：在目标机上安装**并配置好**，让用户能从别的机器用图形界面连过去看实际效果。它是对外开放的远程访问服务，真实面试时是否默认装、恢复原状时要清掉哪些东西，由负责的分支调查后报给用户定。
 - **登录态**：Claude Code、Codex、Chrome 的账号登录不随仓库走，在目标机上**人工登录**。
 
 ## 4. 硬约束
